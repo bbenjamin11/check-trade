@@ -179,10 +179,11 @@ _MERCHANT_RULES: list[tuple[re.Pattern, str]] = [
 # ══════════════════════════════════════════════════════════════════════════════
 _CAT_CONFIG: dict | None = None
 
-
 CAT_FILE = Path(__file__).with_name("cathegorie.json")
 DEFAULT_PDF = Path(__file__).resolve().parent / "Relevé de compte trade republic 04_2023 - 04_2026.pdf"
-
+# > Chemin du CSV déplacé dans le dossier data :
+DATA_DIR = Path(__file__).resolve().parent / "data"
+DEFAULT_CSV = DATA_DIR / "Releve.csv"
 
 def reload_category_config() -> None:
     """Invalide le cache après modification de cathegorie.json."""
@@ -231,12 +232,14 @@ def reparse_pdf_to_releve(
     pdf_path: Path | None = None,
     csv_path: Path | None = None,
 ) -> tuple[int, Path]:
-    """Ré-extrait le PDF et réécrit Releve.csv (chemins par défaut = projet)."""
+    """Ré-extrait le PDF et réécrit Releve.csv (chemins par défaut = ./data)."""
     pdf = pdf_path or DEFAULT_PDF
-    out = csv_path or Path(__file__).resolve().parent / "Releve.csv"
+    out = csv_path or DEFAULT_CSV
     if not pdf.is_file():
         raise FileNotFoundError(f"PDF introuvable : {pdf}")
     transactions = extraire_transactions(pdf, debug=False)
+    # Crée le dossier data si nécessaire
+    out.parent.mkdir(parents=True, exist_ok=True)
     ecrire_csv(transactions, out)
     return len(transactions), out
 
@@ -487,6 +490,8 @@ def extraire_transactions(chemin_pdf: Path, debug: bool = False) -> list[list[st
 
 
 def ecrire_csv(transactions: list[list[str]], chemin_csv: Path) -> None:
+    # Crée le dossier cible si besoin (ie ./data)
+    chemin_csv.parent.mkdir(parents=True, exist_ok=True)
     with open(chemin_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter=";")
         writer.writerow(COLNAMES)
@@ -553,7 +558,7 @@ def fusionner_pdf_dans_releve(
     Extrait le PDF, fusionne avec Releve.csv sans doublons, réécrit le CSV trié par date.
     Doublon = même (date, type, entrée, sortie, description) — insensible à la casse.
     """
-    out = csv_path or Path(__file__).resolve().parent / "Releve.csv"
+    out = csv_path or DEFAULT_CSV
     nouvelles = extraire_transactions(pdf_path, debug=False)
     existantes = [_normalize_row_width(r) for r in lire_releve_csv(out)]
 
@@ -582,7 +587,7 @@ def reappliquer_categories_csv(chemin_csv: Path | None = None) -> int:
     Recalcule MERCHANT et CATEGORY pour chaque ligne à partir de DESCRIPTION et TYPE
     (sans repasser par le PDF — préserve les fusions multi-PDF).
     """
-    path = chemin_csv or Path(__file__).resolve().parent / "Releve.csv"
+    path = chemin_csv or DEFAULT_CSV
     rows = lire_releve_csv(path)
     if not rows:
         return 0
@@ -603,7 +608,7 @@ def reappliquer_categories_csv(chemin_csv: Path | None = None) -> int:
 
 def main() -> None:
     chemin_pdf = Path("./Relevé de compte trade republic 04_2023 - 04_2026.pdf")
-    chemin_csv = Path("./Releve.csv")
+    chemin_csv = DEFAULT_CSV
 
     if not chemin_pdf.exists():
         print(f"❌  {chemin_pdf} introuvable")

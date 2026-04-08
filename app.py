@@ -26,8 +26,9 @@ from parser import (
     reappliquer_categories_csv,
 )
 
-ROOT = Path(__file__).resolve().parent
-load_dotenv(ROOT / ".env")
+ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
+DATA_DIR = ROOT / "data"
+load_dotenv(str(ROOT / ".env"))
 
 # ------------ LOGGER CONFIG --------------------------------------------------
 log_file = ROOT / "app.log"
@@ -340,10 +341,10 @@ def api_parse():
 @app.route("/api/load_releve", methods=["GET"])
 @require_pin
 def load_releve():
-    releve_csv = ROOT / "Releve.csv"
+    releve_csv = DATA_DIR / "Releve.csv"
     if not releve_csv.exists():
         return jsonify({"error": "Fichier Releve.csv introuvable"}), 404
-    return send_from_directory(directory=str(ROOT), path="Releve.csv", mimetype="text/csv; charset=utf-8")
+    return send_from_directory(directory=str(DATA_DIR), path="Releve.csv", mimetype="text/csv; charset=utf-8")
 
 
 @app.route("/api/releve/pdf", methods=["POST"])
@@ -368,7 +369,7 @@ def api_releve_pdf():
     tmp = Path(path)
     try:
         fichier.save(tmp)
-        stats = fusionner_pdf_dans_releve(tmp, ROOT / "Releve.csv")
+        stats = fusionner_pdf_dans_releve(tmp, DATA_DIR / "Releve.csv")
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
@@ -403,7 +404,7 @@ def api_categorie():
     category = (body.get("category") or "").strip()
     if not merchant or not category:
         return jsonify({"error": "Champs « merchant » et « category » requis."}), 400
-    csv_path = ROOT / "Releve.csv"
+    csv_path = DATA_DIR / "Releve.csv"
     if not csv_path.is_file():
         return jsonify({"error": "Releve.csv introuvable — importez d'abord un relevé PDF."}), 404
     try:
