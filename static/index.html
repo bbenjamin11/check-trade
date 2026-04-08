@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Trade Republic — Analyse</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2/dist/chartjs-plugin-zoom.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0b0b10;
+      --surface:  #13131f;
+      --surface2: #1a1a2e;
+      --border:   #252540;
+      --accent:   #a78bfa;
+      --accent2:  #6366f1;
+      --pos:      #4ade80;
+      --neg:      #f87171;
+      --text:     #e2e2f0;
+      --muted:    #6b6b8a;
+    }
+
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #13131f 0%, #1a1020 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 1.5rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+    header h1 {
+      font-size: 1.4rem;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      letter-spacing: -0.02em;
+    }
+    header h1 span { color: var(--text); font-weight: 300; }
+
+    .header-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.35rem;
+    }
+    #btn-upload-pdf {
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      color: #fff;
+      border: none;
+      padding: 0.55rem 1.3rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    #btn-upload-pdf:hover { opacity: 0.88; transform: translateY(-1px); }
+    #btn-upload-pdf:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    #upload-status {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+      text-align: right;
+    }
+
+    /* ── Layout principal ── */
+    main { padding: 2rem; max-width: 1600px; margin: 0 auto; }
+
+    /* ── KPIs ── */
+    #kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.3rem 1rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .kpi::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(167,139,250,0.06), transparent);
+      pointer-events: none;
+    }
+    .kpi:hover { border-color: var(--accent); }
+    .kpi .val { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+    .kpi .lbl { font-size: 0.72rem; color: var(--muted); margin-top: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* ── Grid graphiques ── */
+    .section-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin: 2.5rem 0 1rem;
+      padding-left: 0.2rem;
+      border-left: 3px solid var(--accent2);
+      padding-left: 0.6rem;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 1.25rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: #3a3a5c; }
+    .card h2 {
+      font-size: 0.88rem;
+      color: #c4b5fd;
+      margin-bottom: 1.2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 600;
+    }
+    .card canvas { max-height: 340px; }
+
+    /* Grille colonnes */
+    .col-12 { grid-column: span 12; }
+    .col-8  { grid-column: span 8; }
+    .col-4  { grid-column: span 4; }
+    .col-6  { grid-column: span 6; }
+    @media (max-width: 900px) {
+      .col-8, .col-4, .col-6, .col-12 { grid-column: span 12; }
+    }
+
+    /* ── Hint zoom ── */
+    .zoom-hint {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 0.7rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .zoom-hint kbd {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      font-size: 0.68rem;
+      color: var(--accent);
+    }
+    #btn-reset-zoom {
+      margin-left: auto;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+    #btn-reset-zoom:hover { border-color: var(--accent); }
+
+    /* ── D3 Donut ── */
+    #d3-wrap {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      flex-wrap: nowrap;
+    }
+    #d3-donut-container { flex: 0 0 220px; }
+    #d3-donut { width: 220px; height: 220px; }
+    #d3-legend {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .d3-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .d3-legend-item:hover { background: var(--surface2); }
+    .d3-legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+    .d3-legend-name { flex: 1; color: var(--text); }
+    .d3-legend-amt { color: var(--neg); font-weight: 600; font-size: 0.78rem; }
+
+    /* ── Tableau mensuel ── */
+    .monthly-table-wrap { overflow-x: auto; margin-top: 1.2rem; border-radius: 10px; border: 1px solid var(--border); }
+    .monthly-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .monthly-table thead tr { background: var(--surface2); }
+    .monthly-table th {
+      padding: 0.6rem 1rem;
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      text-align: right;
+      font-weight: 600;
+    }
+    .monthly-table th:first-child { text-align: left; }
+    .monthly-table td { padding: 0.5rem 1rem; text-align: right; border-top: 1px solid var(--border); }
+    .monthly-table td:first-child { text-align: left; font-weight: 500; }
+    .monthly-table tbody tr { cursor: pointer; transition: background 0.15s; }
+    .monthly-table tbody tr:hover { background: var(--surface2); }
+    .monthly-table tbody tr.active-month { background: rgba(167,139,250,0.12); border-left: 3px solid var(--accent); }
+
+    /* ── Modal / drawer transactions mois ── */
+    #month-drawer {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: none;
+    }
+    #month-drawer.open { display: flex; }
+    #drawer-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+    }
+    #drawer-panel {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: min(780px, 95vw);
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      animation: slideIn 0.25s ease;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(100%); }
+      to   { transform: translateX(0); }
+    }
+    #drawer-header {
+      padding: 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #drawer-header h3 { color: var(--accent); font-size: 1rem; }
+    #drawer-close {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #drawer-close:hover { border-color: var(--accent); color: var(--accent); }
+    #drawer-body { flex: 1; overflow-y: auto; padding: 1rem 1.5rem; }
+    #drawer-stats {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .drawer-stat {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.7rem 1rem;
+      flex: 1;
+      text-align: center;
+      min-width: 100px;
+    }
+    .drawer-stat .val { font-size: 1.1rem; font-weight: 700; }
+    .drawer-stat .lbl { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; }
+
+    /* ── Tableau transactions (drawer + section) ── */
+    .tx-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .tx-table thead tr { background: var(--surface2); position: sticky; top: 0; }
+    .tx-table th {
+      padding: 0.55rem 0.8rem;
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .tx-table td {
+      padding: 0.5rem 0.8rem;
+      white-space: nowrap;
+      border-top: 1px solid var(--border);
+    }
+    .tx-table tbody tr:hover { background: var(--surface2); }
+    .tx-table .amt-in  { color: var(--pos); font-weight: 600; }
+    .tx-table .amt-out { color: var(--neg); font-weight: 600; }
+    .tx-table .desc-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 0.78rem; }
+
+    /* ── Récurrence ── */
+    #recurrence-section { margin-top: 2rem; }
+
+    #rec-search {
+      width: 100%;
+      max-width: 420px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.6rem 1rem;
+      color: var(--text);
+      font-size: 0.88rem;
+      margin-bottom: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #rec-search:focus { border-color: var(--accent); }
+
+    .rec-table-wrap { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+    table.rec-group { width: 100%; border-collapse: collapse; }
+
+    .rec-thead th {
+      padding: 0.55rem 1rem;
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      text-align: left;
+    }
+    .rec-thead th:nth-child(2),
+    .rec-thead th:nth-child(3) { text-align: right; }
+
+    tr.rec-cat-row {
+      cursor: pointer;
+      background: var(--surface2);
+      transition: background 0.15s;
+    }
+    tr.rec-cat-row:hover { background: #22223a; }
+    tr.rec-cat-row td {
+      padding: 0.65rem 1rem;
+      font-weight: 600;
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+    }
+    tr.rec-cat-row td:nth-child(2),
+    tr.rec-cat-row td:nth-child(3) { text-align: right; }
+
+    .rec-chevron {
+      display: inline-block;
+      margin-right: 0.5rem;
+      font-size: 0.6rem;
+      color: var(--accent);
+      transition: transform 0.2s;
+    }
+    .rec-chevron.open { transform: rotate(90deg); }
+
+    tr.rec-merchant-row { display: none; }
+    tr.rec-merchant-row.visible { display: table-row; }
+    tr.rec-merchant-row td {
+      padding: 0.45rem 1rem 0.45rem 2.5rem;
+      font-size: 0.82rem;
+      border-top: 1px solid rgba(37,37,64,0.6);
+    }
+    tr.rec-merchant-row td:nth-child(2),
+    tr.rec-merchant-row td:nth-child(3) { text-align: right; }
+    tr.rec-merchant-row:hover { background: var(--surface2); }
+
+    .rec-cat-select {
+      max-width: 260px;
+      font-size: 0.72rem;
+      padding: 0.28rem 0.4rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      outline: none;
+    }
+    .rec-apply-btn {
+      margin-left: 0.35rem;
+      font-size: 0.72rem;
+      padding: 0.28rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid var(--accent2);
+      background: #3730a3;
+      color: #e0e7ff;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .rec-apply-btn:hover { background: #4f46e5; }
+    .rec-apply-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Utilitaires ── */
+    .neg { color: var(--neg); }
+    .pos { color: var(--pos); }
+    #empty-state {
+      text-align: center;
+      color: var(--muted);
+      margin-top: 6rem;
+      font-size: 1.1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+    #empty-state .big { font-size: 3rem; }
+
+    /* ── Badge catégorie ── */
+    .cat-badge {
+      display: inline-block;
+      font-size: 0.68rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 20px;
+      background: rgba(99,102,241,0.2);
+      color: #a5b4fc;
+      margin-left: 0.4rem;
+      font-weight: 500;
+    }
+
+    /* ── Code PIN (.env PIN_APP) ── */
+    .pin-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100000;
+      background: rgba(6, 6, 12, 0.94);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(10px);
+    }
+    .pin-overlay.is-open { display: flex; }
+    .pin-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem 2.2rem;
+      max-width: 360px;
+      width: 92%;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+    }
+    .pin-card h2 { font-size: 1.1rem; color: var(--accent); margin-bottom: 0.35rem; }
+    .pin-card .pin-hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 1.1rem;
+      line-height: 1.45;
+    }
+    .pin-card .pin-hint code { font-size: 0.72rem; background: var(--surface2); padding: 0.1rem 0.35rem; border-radius: 4px; }
+    .pin-card input[type="password"] {
+      width: 100%;
+      padding: 0.65rem 0.9rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 1.05rem;
+      letter-spacing: 0.12em;
+      margin-bottom: 0.5rem;
+      outline: none;
+    }
+    .pin-card input[type="password"]:focus { border-color: var(--accent); }
+    #pin-error { color: var(--neg); font-size: 0.82rem; margin-bottom: 0.6rem; min-height: 1.2em; }
+    #pin-submit {
+      width: 100%;
+      padding: 0.65rem;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.92rem;
+    }
+    #pin-submit:hover { opacity: 0.92; }
+    #pin-submit:disabled { opacity: 0.45; cursor: not-allowed; }
+    #pin-checking { text-align: center; color: var(--muted); font-size: 0.9rem; }
+
+    /* Scrollbar custom */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent2); }
+  </style>
+</head>
+<body>
+
+<div id="pin-overlay" class="pin-overlay" aria-hidden="true">
+  <div class="pin-card" role="dialog" aria-labelledby="pin-title">
+    <div id="pin-checking">Vérification du code d’accès…</div>
+    <div id="pin-form-wrap" style="display:none">
+      <h2 id="pin-title">Code d’accès</h2>
+      <input type="password" id="pin-input" autocomplete="current-password" />
+      <p id="pin-error"></p>
+      <button type="button" id="pin-submit">Valider</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Header ── -->
+<header>
+  <h1>📊 Trade Republic <span>— Analyse</span></h1>
+  <div class="header-actions">
+    <input type="file" id="pdf-releve-input" accept=".pdf,application/pdf" hidden/>
+    <button type="button" id="btn-upload-pdf" title="Parse le PDF et fusionne dans Releve.csv (sans doublons)">
+      📄 Ajouter relevé PDF
+    </button>
+    <p id="upload-status">Chargement de Releve.csv…</p>
+  </div>
+</header>
+
+<!-- ── Drawer transactions mois ── -->
+<div id="month-drawer">
+  <div id="drawer-backdrop"></div>
+  <div id="drawer-panel">
+    <div id="drawer-header">
+      <h3 id="drawer-title">Transactions — Mois</h3>
+      <button id="drawer-close">✕</button>
+    </div>
+    <div id="drawer-body">
+      <div id="drawer-stats"></div>
+      <table class="tx-table" id="drawer-table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Type</th><th>Marchand / Description</th>
+            <th>Entrée</th><th>Sortie</th><th>Solde</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div id="empty-state">
+    <div class="big">📂</div>
+    <div id="empty-msg">Chargement de Releve.csv…</div>
+  </div>
+
+  <!-- KPIs -->
+  <div id="kpis" style="display:none">
+    <div class="kpi"><div class="val" id="kpi-out">—</div><div class="lbl">Total dépenses</div></div>
+    <div class="kpi"><div class="val" id="kpi-in">—</div><div class="lbl">Total entrées</div></div>
+    <div class="kpi"><div class="val" id="kpi-net">—</div><div class="lbl">Solde net</div></div>
+    <div class="kpi"><div class="val" id="kpi-avg">—</div><div class="lbl">Dépense moy/mois</div></div>
+    <div class="kpi"><div class="val" id="kpi-count">—</div><div class="lbl">Transactions</div></div>
+    <div class="kpi"><div class="val" id="kpi-months">—</div><div class="lbl">Mois couverts</div></div>
+  </div>
+
+  <!-- Graphiques -->
+  <div id="charts-wrap" style="display:none">
+
+    <p class="section-title">📅 Évolution quotidienne</p>
+    <div class="charts-grid">
+      <div class="card col-12">
+        <h2>📅 Entrées vs Sorties — jour par jour</h2>
+        <div class="zoom-hint">
+          <kbd>Molette</kbd> pour zoomer · <kbd>Glisser</kbd> pour naviguer
+          <button id="btn-reset-zoom">↺ Réinitialiser</button>
+        </div>
+        <canvas id="c-daily"></canvas>
+      </div>
+    </div>
+
+    <p class="section-title">📆 Vue mensuelle</p>
+    <div class="charts-grid">
+      <div class="card col-12">
+        <h2>📆 Entrées · Sorties · Net — par mois <span style="font-size:0.72rem;color:var(--muted);font-weight:400">(cliquez une barre ou une ligne pour voir les transactions du mois)</span></h2>
+        <canvas id="c-monthly"></canvas>
+        <div class="monthly-table-wrap">
+          <table class="monthly-table" id="tbl-monthly">
+            <thead>
+              <tr>
+                <th>Mois</th><th>Entrées (€)</th><th>Sorties (€)</th><th>Net (€)</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-title">🍩 Répartition &amp; Marchands</p>
+    <div class="charts-grid">
+      <div class="card col-4" id="card-donut">
+        <h2>🍩 Sorties par catégorie</h2>
+        <div id="d3-wrap">
+          <div id="d3-donut-container">
+            <svg id="d3-donut"></svg>
+          </div>
+          <div id="d3-legend"></div>
+        </div>
+      </div>
+      <div class="card col-8">
+        <h2>🔴 Top 20 marchands — sorties</h2>
+        <canvas id="c-sorties-desc"></canvas>
+      </div>
+    </div>
+
+    <p class="section-title">📈 Cumul dans le temps</p>
+    <div class="charts-grid">
+      <div class="card col-12">
+        <h2>📈 Cumul entrées · sorties · écart dans le temps</h2>
+        <canvas id="c-cumul"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Récurrence marchands -->
+  <div id="recurrence-section" style="display:none">
+    <p class="section-title" style="margin-top:2.5rem">🔁 Récurrence marchands</p>
+    <input id="rec-search" type="search" placeholder="🔍 Filtrer marchand ou catégorie…"/>
+    <div class="rec-table-wrap" id="rec-table-wrap"></div>
+  </div>
+
+</main>
+
+<script>
+/* ═══════════════════════════════════════════
+   UTILITAIRES
+═══════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+
+/** Toutes les requêtes API envoient les cookies de session (PIN). */
+function apiFetch(url, opts = {}) {
+  return fetch(url, { credentials: "same-origin", ...opts });
+}
+
+const fmtEur = v =>
+  v == null ? "—" : v.toLocaleString("fr-FR", { style:"currency", currency:"EUR" });
+
+const fmtShort = v =>
+  v == null ? "—"
+  : v.toLocaleString("fr-FR", { minimumFractionDigits:0, maximumFractionDigits:0 }) + " €";
+
+function parseEur(str) {
+  if (!str || str.trim() === "") return 0;
+  const clean = str.replace(/€/g,"").replace(/\s/g,"").replace(/,/g,".");
+  const parts  = clean.split(".");
+  const val    = parts.length > 2
+    ? parseFloat(parts.slice(0,-1).join("") + "." + parts[parts.length-1])
+    : parseFloat(clean);
+  return isNaN(val) ? 0 : val;
+}
+
+function parseCSV(text) {
+  const lines   = text.trim().split(/\r?\n/);
+  const headers = lines[0].split(";").map(h => h.trim().replace(/"/g,""));
+  return lines.slice(1).filter(l => l.trim() !== "").map(line => {
+    const cols = line.split(";").map(c => c.trim().replace(/"/g,""));
+    const obj  = {};
+    headers.forEach((h,i) => obj[h] = cols[i] || "");
+    return obj;
+  });
+}
+
+const MONTHS_MAP = {
+  Jan:"01",Feb:"02",Mar:"03",Apr:"04",May:"05",Jun:"06",
+  Jul:"07",Aug:"08",Sep:"09",Oct:"10",Nov:"11",Dec:"12"
+};
+const monthKey = d => {
+  const p = d.trim().split(/\s+/);
+  return p.length < 3 ? d : `${p[2]}-${MONTHS_MAP[p[1]]||"00"}`;
+};
+const toISO = d => {
+  const p = d.trim().split(/\s+/);
+  return p.length < 3 ? d : `${p[2]}-${MONTHS_MAP[p[1]]||"00"}-${p[0].padStart(2,"0")}`;
+};
+
+const C_OUT = "rgba(248,113,113,0.85)";
+const C_IN  = "rgba(74,222,128,0.85)";
+const C_NET = "rgba(167,139,250,0.9)";
+const C_ECT = "rgba(251,191,36,0.85)";
+
+function genColors(n) {
+  return Array.from({length:n}, (_,i) =>
+    `hsla(${Math.round(i*360/n)},68%,62%,0.85)`);
+}
+
+function baseOpts(extra={}) {
+  return {
+    responsive:true,
+    plugins:{
+      legend:{ labels:{ color:"#ccc", font:{size:11} } },
+      ...(extra.plugins||{})
+    },
+    scales:{
+      x:{ ticks:{color:"#888",font:{size:10},maxRotation:45}, grid:{color:"#1e1e32"} },
+      y:{ ticks:{color:"#888",font:{size:10}}, grid:{color:"#1e1e32"} },
+      ...(extra.scales||{})
+    },
+    ...extra
+  };
+}
+
+let _charts = {};
+let _allRows = [];
+
+function destroyCharts() {
+  Object.values(_charts).forEach(c => c.destroy());
+  _charts = {};
+}
+
+async function ensureCategories() {
+  if (window._cats && window._cats.length) return window._cats;
+  try {
+    const r = await apiFetch("/api/categories");
+    if (!r.ok) return [];
+    const j = await r.json();
+    window._cats = j.categories || [];
+    return window._cats;
+  } catch { return []; }
+}
+
+/* ═══════════════════════════════════════════
+   DRAWER TRANSACTIONS MOIS
+═══════════════════════════════════════════ */
+function openDrawer(monthLabel, rows) {
+  $("drawer-title").textContent = `📅 Transactions — ${monthLabel}`;
+
+  const ins    = rows.filter(r => parseEur(r["MONEY IN"])  > 0);
+  const outs   = rows.filter(r => parseEur(r["MONEY OUT"]) > 0);
+  const totalIn  = ins.reduce((s,r)  => s + parseEur(r["MONEY IN"]),  0);
+  const totalOut = outs.reduce((s,r) => s + parseEur(r["MONEY OUT"]), 0);
+
+  $("drawer-stats").innerHTML = `
+    <div class="drawer-stat"><div class="val pos">${fmtEur(totalIn)}</div><div class="lbl">Entrées</div></div>
+    <div class="drawer-stat"><div class="val neg">${fmtEur(totalOut)}</div><div class="lbl">Sorties</div></div>
+    <div class="drawer-stat"><div class="val ${totalIn-totalOut>=0?'pos':'neg'}">${fmtEur(totalIn-totalOut)}</div><div class="lbl">Net</div></div>
+    <div class="drawer-stat"><div class="val">${rows.length}</div><div class="lbl">Transactions</div></div>`;
+
+  const tbody = $("drawer-table").querySelector("tbody");
+  tbody.innerHTML = "";
+  [...rows].sort((a,b) => toISO(b.DATE).localeCompare(toISO(a.DATE))).forEach(r => {
+    const out = parseEur(r["MONEY OUT"]);
+    const inp = parseEur(r["MONEY IN"]);
+    const tr  = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${r.DATE||""}</td>
+      <td>${r.TYPE||""}</td>
+      <td class="desc-cell" title="${(r.MERCHANT||r.DESCRIPTION||"").replace(/"/g,"")}">${r.MERCHANT||r.DESCRIPTION||""}</td>
+      <td class="amt-in">${inp>0 ? fmtEur(inp) : ""}</td>
+      <td class="amt-out">${out>0 ? fmtEur(out) : ""}</td>
+      <td>${fmtEur(parseEur(r.BALANCE))}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  $("month-drawer").classList.add("open");
+  document.body.style.overflow = "hidden";
+}
+
+function closeDrawer() {
+  $("month-drawer").classList.remove("open");
+  document.body.style.overflow = "";
+  document.querySelectorAll(".monthly-table tbody tr.active-month")
+    .forEach(r => r.classList.remove("active-month"));
+}
+
+$("drawer-close").addEventListener("click", closeDrawer);
+$("drawer-backdrop").addEventListener("click", closeDrawer);
+document.addEventListener("keydown", e => { if(e.key==="Escape") closeDrawer(); });
+
+/* ═══════════════════════════════════════════
+   D3 — DONUT
+═══════════════════════════════════════════ */
+function renderD3Donut(catTotals) {
+  const svg = d3.select("#d3-donut");
+  svg.selectAll("*").remove();
+  d3.select("#d3-legend").html("");
+
+  const W=220, H=220, R=Math.min(W,H)/2-8, IR=R*0.54;
+  svg.attr("viewBox",`0 0 ${W} ${H}`).attr("width",W).attr("height",H);
+  const g = svg.append("g").attr("transform",`translate(${W/2},${H/2})`);
+
+  const data   = catTotals.filter(d=>d.total>0).sort((a,b)=>b.total-a.total);
+  const colors = genColors(data.length);
+  const color  = d3.scaleOrdinal().domain(data.map(d=>d.cat)).range(colors);
+  const total  = d3.sum(data, d=>d.total);
+
+  const pie    = d3.pie().value(d=>d.total).sort(null);
+  const arc    = d3.arc().innerRadius(IR).outerRadius(R);
+  const arcHov = d3.arc().innerRadius(IR).outerRadius(R+8);
+
+  const lbl    = g.append("text").attr("text-anchor","middle").attr("dy","-0.3em")
+    .attr("fill","#a78bfa").attr("font-size",11).attr("font-weight",700);
+  const lbl2   = g.append("text").attr("text-anchor","middle").attr("dy","1.1em")
+    .attr("fill","#ccc").attr("font-size",10);
+  lbl.text("Total"); lbl2.text(fmtShort(total));
+
+  g.selectAll("path").data(pie(data)).join("path")
+    .attr("d",arc)
+    .attr("fill",d=>color(d.data.cat))
+    .attr("stroke","#0b0b10").attr("stroke-width",2)
+    .on("mouseover",function(e,d){
+      d3.select(this).attr("d",arcHov);
+      lbl.text(d.data.cat); lbl2.text(fmtShort(d.data.total));
+    })
+    .on("mouseout",function(e,d){
+      d3.select(this).attr("d",arc);
+      lbl.text("Total"); lbl2.text(fmtShort(total));
+    });
+
+  const legendEl = d3.select("#d3-legend");
+  data.forEach(d => {
+    const item = legendEl.append("div").attr("class","d3-legend-item");
+    item.append("div").attr("class","d3-legend-dot").style("background",color(d.cat));
+    item.append("span").attr("class","d3-legend-name").text(d.cat);
+    item.append("span").attr("class","d3-legend-amt").text(fmtShort(d.total));
+  });
+}
+
+/* ═══════════════════════════════════════════
+   TABLEAU RÉCURRENCE
+═══════════════════════════════════════════ */
+function renderRecurrenceTable(merchantMap) {
+  const byCategory = {};
+  Object.values(merchantMap).forEach(m => {
+    if (!byCategory[m.category]) byCategory[m.category] = [];
+    byCategory[m.category].push(m);
+  });
+
+  const catsSorted = Object.entries(byCategory)
+    .map(([cat,merchants]) => ({
+      cat,
+      merchants: merchants.sort((a,b)=>b.total-a.total),
+      total: merchants.reduce((s,m)=>s+m.total,0),
+      count: merchants.reduce((s,m)=>s+m.count,0)
+    }))
+    .sort((a,b)=>b.total-a.total);
+
+  const wrap = $("rec-table-wrap");
+  wrap.innerHTML = "";
+  const table  = document.createElement("table");
+  table.className = "rec-group";
+  const thead  = document.createElement("thead");
+  thead.className = "rec-thead";
+  thead.innerHTML = `<tr>
+    <th>Catégorie / Marchand</th>
+    <th style="text-align:right">Occurrences</th>
+    <th style="text-align:right">Montant cumulé</th>
+    <th>Recatégoriser</th>
+  </tr>`;
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  const catList = window._cats || [];
+
+  catsSorted.forEach((catObj, ci) => {
+    const catRow = document.createElement("tr");
+    catRow.className = "rec-cat-row";
+    catRow.innerHTML = `
+      <td><span class="rec-chevron" id="chev-${ci}">▶</span>${catObj.cat}
+        <span style="color:var(--muted);font-weight:400;font-size:0.75rem;margin-left:0.3rem">(${catObj.merchants.length})</span>
+      </td>
+      <td style="text-align:right">${catObj.count}</td>
+      <td class="neg" style="text-align:right">${fmtEur(catObj.total)}</td>
+      <td></td>`;
+    catRow.addEventListener("click", () => toggleGroup(ci));
+    tbody.appendChild(catRow);
+
+    catObj.merchants.forEach(m => {
+      const row = document.createElement("tr");
+      row.className = "rec-merchant-row";
+      row.dataset.group  = ci;
+      row.dataset.search = `${m.merchant} ${catObj.cat}`.toLowerCase();
+
+      const td1 = document.createElement("td"); td1.textContent = m.merchant;
+      const td2 = document.createElement("td"); td2.style.textAlign="right"; td2.textContent = m.count;
+      const td3 = document.createElement("td"); td3.className="neg"; td3.style.textAlign="right"; td3.textContent = fmtEur(m.total);
+      const td4 = document.createElement("td"); td4.className = "rec-action";
+
+      const sel = document.createElement("select");
+      sel.className = "rec-cat-select";
+      const defaultOpt = document.createElement("option");
+      defaultOpt.value = ""; defaultOpt.textContent = catList.length ? "— choisir —" : catObj.cat;
+      sel.appendChild(defaultOpt);
+      catList.forEach(c => {
+        const o = document.createElement("option");
+        o.value = c; o.textContent = c;
+        if (c === catObj.cat) o.selected = true;
+        sel.appendChild(o);
+      });
+
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "rec-apply-btn"; btn.textContent = "Appliquer";
+      btn.addEventListener("click", async e => {
+        e.stopPropagation(); btn.disabled = true;
+        try {
+          const resp = await apiFetch("/api/categorie", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({ merchant:m.merchant, category:sel.value })
+          });
+          const data = await resp.json().catch(()=>({}));
+          if (resp.status === 401 && data.auth_required) {
+            showPinOverlay("form");
+            throw new Error("Session expirée — saisissez le code.");
+          }
+          if (!resp.ok) throw new Error(data.error||resp.statusText);
+          $("upload-status").textContent = data.message || "✅ Catégorie enregistrée.";
+          const r2 = await apiFetch("/api/load_releve");
+          if (!r2.ok) throw new Error("Rechargement impossible");
+          const text = await r2.text();
+          await render(parseCSV(text));
+        } catch(err) {
+          $("upload-status").textContent = `❌ ${err.message}`;
+        } finally { btn.disabled = false; }
+      });
+
+      td4.appendChild(sel); td4.appendChild(btn);
+      row.appendChild(td1); row.appendChild(td2); row.appendChild(td3); row.appendChild(td4);
+      tbody.appendChild(row);
+    });
+  });
+
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  function toggleGroup(ci) {
+    const rows    = tbody.querySelectorAll(`tr[data-group="${ci}"]`);
+    const chevron = $(`chev-${ci}`);
+    const isOpen  = chevron.classList.contains("open");
+    rows.forEach(r => r.classList.toggle("visible",!isOpen));
+    chevron.classList.toggle("open",!isOpen);
+  }
+
+  $("rec-search").oninput = function() {
+    const q = this.value.toLowerCase().trim();
+    if (!q) {
+      tbody.querySelectorAll(".rec-merchant-row").forEach(r=>r.classList.remove("visible"));
+      tbody.querySelectorAll(".rec-cat-row").forEach(r=>r.style.display="");
+      tbody.querySelectorAll(".rec-chevron").forEach(c=>c.classList.remove("open"));
+      return;
+    }
+    const openGroups = new Set();
+    tbody.querySelectorAll(".rec-merchant-row").forEach(r => {
+      const match = r.dataset.search.includes(q);
+      r.classList.toggle("visible",match);
+      if (match) openGroups.add(r.dataset.group);
+    });
+    tbody.querySelectorAll(".rec-cat-row").forEach((r,i) => {
+      r.style.display = openGroups.has(String(i)) ? "" : "none";
+      const chev = $(`chev-${i}`);
+      if (chev) chev.classList.toggle("open", openGroups.has(String(i)));
+    });
+  };
+}
+
+/* ═══════════════════════════════════════════
+   RENDER PRINCIPAL
+═══════════════════════════════════════════ */
+async function render(rows) {
+  _allRows = rows;
+  destroyCharts();
+  await ensureCategories();
+
+  const dailyIn={}, dailyOut={}, monthlyIn={}, monthlyOut={};
+  const categoryTotals={}, merchantMap={}, descSortiesMonthly={};
+  let totalIn=0, totalOut=0;
+
+  /* Index rows par mois */
+  const rowsByMonth = {};
+
+  rows.forEach(r => {
+    const inp = parseEur(r["MONEY IN"]);
+    const out = parseEur(r["MONEY OUT"]);
+    const iso  = toISO(r.DATE||"");
+    const mKey = monthKey(r.DATE||"");
+
+    if (!rowsByMonth[mKey]) rowsByMonth[mKey] = [];
+    rowsByMonth[mKey].push(r);
+
+    if (inp > 0) {
+      totalIn += inp;
+      dailyIn[iso]    = (dailyIn[iso]||0) + inp;
+      monthlyIn[mKey] = (monthlyIn[mKey]||0) + inp;
+    }
+    if (out > 0) {
+      totalOut += out;
+      dailyOut[iso]    = (dailyOut[iso]||0) + out;
+      monthlyOut[mKey] = (monthlyOut[mKey]||0) + out;
+
+      const category = (r.CATEGORY||"❓ Divers").trim();
+      categoryTotals[category] = (categoryTotals[category]||0) + out;
+
+      const mKey2 = r.MERCHANT||r.DESCRIPTION||"—";
+      if (!merchantMap[mKey2]) merchantMap[mKey2] = {merchant:mKey2, category, count:0, total:0};
+      merchantMap[mKey2].count += 1;
+      merchantMap[mKey2].total += out;
+
+      const desc = (r.MERCHANT||r.DESCRIPTION||"—").trim();
+      if (!descSortiesMonthly[desc]) descSortiesMonthly[desc] = {};
+      descSortiesMonthly[desc][mKey] = (descSortiesMonthly[desc][mKey]||0) + out;
+    }
+  });
+
+  const months = [...new Set([...Object.keys(monthlyOut),...Object.keys(monthlyIn)])].sort();
+  const net = totalIn - totalOut;
+
+  /* ── KPIs ── */
+  $("kpi-out").textContent    = fmtEur(totalOut);
+  $("kpi-in").textContent     = fmtEur(totalIn);
+  $("kpi-net").textContent    = fmtEur(net);
+  $("kpi-net").className      = "val " + (net>=0?"pos":"neg");
+  $("kpi-avg").textContent    = fmtEur(months.length ? totalOut/months.length : 0);
+  $("kpi-count").textContent  = rows.length;
+  $("kpi-months").textContent = months.length;
+  $("kpis").style.display     = "";
+  $("empty-state").style.display = "none";
+
+  const allDates = [...new Set([...Object.keys(dailyIn),...Object.keys(dailyOut)])].sort();
+
+  /* ── G1 : Quotidien avec zoom ── */
+  _charts.daily = new Chart($("c-daily"), {
+    type:"bar",
+    data:{
+      labels: allDates,
+      datasets:[
+        { label:"Entrées (€)",  data: allDates.map(d=>dailyIn[d]||0),
+          backgroundColor:C_IN,  order:2 },
+        { label:"Sorties (€)",  data: allDates.map(d=>dailyOut[d]||0),
+          backgroundColor:C_OUT, order:2 }
+      ]
+    },
+    options: baseOpts({
+      plugins:{
+        legend:{ labels:{color:"#ccc",font:{size:11}} },
+        zoom:{
+          pan:{ enabled:true, mode:"x" },
+          zoom:{ wheel:{enabled:true}, pinch:{enabled:true}, mode:"x" }
+        }
+      }
+    })
+  });
+
+  $("btn-reset-zoom").addEventListener("click", () => {
+    _charts.daily.resetZoom();
+  });
+
+  /* ── G2 : Mensuel avec clic ── */
+  const monthLabels = months;
+  _charts.monthly = new Chart($("c-monthly"), {
+    type:"bar",
+    data:{
+      labels: monthLabels,
+      datasets:[
+        { label:"Entrées (€)",  data: months.map(m=>monthlyIn[m]||0),
+          backgroundColor:C_IN,  order:2, yAxisID:"y" },
+        { label:"Sorties (€)",  data: months.map(m=>monthlyOut[m]||0),
+          backgroundColor:C_OUT, order:2, yAxisID:"y" },
+        { label:"Net (€)", data: months.map(m=>(monthlyIn[m]||0)-(monthlyOut[m]||0)),
+          type:"line", borderColor:C_NET, backgroundColor:"rgba(167,139,250,0.08)",
+          borderWidth:2, pointRadius:4, pointHoverRadius:6,
+          fill:false, tension:0.3, order:1, yAxisID:"y" }
+      ]
+    },
+    options: baseOpts({
+      onClick(evt, elements) {
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        const mLabel = months[idx];
+        const mRows  = rowsByMonth[mLabel] || [];
+        openDrawer(mLabel, mRows);
+        document.querySelectorAll(".monthly-table tbody tr").forEach((tr,i) => {
+          tr.classList.toggle("active-month", i === idx);
+        });
+      },
+      plugins:{
+        legend:{ labels:{color:"#ccc",font:{size:11}} }
+      }
+    })
+  });
+
+  /* ── Tableau mensuel cliquable ── */
+  const mTbody = $("tbl-monthly").querySelector("tbody");
+  mTbody.innerHTML = "";
+  months.forEach((m,idx) => {
+    const inp = monthlyIn[m]||0;
+    const out = monthlyOut[m]||0;
+    const n   = inp - out;
+    const tr  = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${m}</td>
+      <td class="pos">${fmtShort(inp)}</td>
+      <td class="neg">${fmtShort(out)}</td>
+      <td class="${n>=0?"pos":"neg"}">${fmtShort(n)}</td>`;
+    tr.addEventListener("click", () => {
+      document.querySelectorAll(".monthly-table tbody tr").forEach(r=>r.classList.remove("active-month"));
+      tr.classList.add("active-month");
+      openDrawer(m, rowsByMonth[m]||[]);
+    });
+    mTbody.appendChild(tr);
+  });
+
+  /* ── D3 Donut ── */
+  renderD3Donut(Object.entries(categoryTotals).map(([cat,total])=>({cat,total})));
+
+  /* ── G3 : Top 20 marchands horizontal ── */
+  const descTotals = Object.entries(descSortiesMonthly)
+    .map(([desc,mData]) => ({ desc, total:Object.values(mData).reduce((s,v)=>s+v,0) }))
+    .sort((a,b)=>b.total-a.total).slice(0,20);
+
+  _charts.sorties = new Chart($("c-sorties-desc"), {
+    type:"bar",
+    data:{
+      labels: descTotals.map(d=>d.desc),
+      datasets:[{
+        label:"Total (€)",
+        data:  descTotals.map(d=>d.total),
+        backgroundColor: genColors(descTotals.length)
+      }]
+    },
+    options: baseOpts({
+      indexAxis:"y",
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ ticks:{color:"#888"}, grid:{color:"#1e1e32"} },
+        y:{ ticks:{color:"#ccc",font:{size:10}}, grid:{color:"#1e1e32"} }
+      }
+    })
+  });
+
+  /* ── G4 : Cumul + écart ── */
+  let cumIn=0, cumOut=0;
+  const cumulIn  = allDates.map(d => { cumIn  += dailyIn[d]||0;  return cumIn; });
+  const cumulOut = allDates.map(d => { cumOut += dailyOut[d]||0; return cumOut; });
+  const ecart    = cumulIn.map((v,i) => v - cumulOut[i]);
+
+  _charts.cumul = new Chart($("c-cumul"), {
+    type:"line",
+    data:{
+      labels: allDates,
+      datasets:[
+        { label:"Entrées cumulées (€)", data:cumulIn,
+          borderColor:C_IN,  backgroundColor:"rgba(74,222,128,0.05)",
+          fill:true, tension:0.3, pointRadius:0, borderWidth:2 },
+        { label:"Sorties cumulées (€)", data:cumulOut,
+          borderColor:C_OUT, backgroundColor:"rgba(248,113,113,0.05)",
+          fill:true, tension:0.3, pointRadius:0, borderWidth:2 },
+        { label:"Écart (entrées − sorties) (€)", data:ecart,
+          borderColor:C_ECT, backgroundColor:"rgba(251,191,36,0.07)",
+          fill:true, tension:0.3, pointRadius:0, borderWidth:1.5,
+          borderDash:[5,3] }
+      ]
+    },
+    options: baseOpts()
+  });
+
+  /* Affichage */
+  $("charts-wrap").style.display         = "";
+  $("recurrence-section").style.display  = "";
+
+  /* ── Récurrence ── */
+  renderRecurrenceTable(merchantMap);
+}
+
+/* ═══════════════════════════════════════════
+   Chargement initial Releve.csv + import PDF
+═══════════════════════════════════════════ */
+function showPinOverlay(mode) {
+  const ov = $("pin-overlay");
+  ov.classList.add("is-open");
+  ov.setAttribute("aria-hidden", "false");
+  $("pin-checking").style.display = mode === "checking" ? "block" : "none";
+  $("pin-form-wrap").style.display = mode === "form" ? "block" : "none";
+  $("pin-error").textContent = "";
+  if (mode === "form") setTimeout(() => $("pin-input").focus(), 50);
+}
+
+function hidePinOverlay() {
+  const ov = $("pin-overlay");
+  ov.classList.remove("is-open");
+  ov.setAttribute("aria-hidden", "true");
+}
+
+async function boot() {
+  try {
+    const r = await apiFetch("/api/auth/status");
+    const j = await r.json().catch(() => ({}));
+    if (!j.pin_required) {
+      await loadReleveFromServer();
+      return;
+    }
+    if (j.authenticated) {
+      await loadReleveFromServer();
+      return;
+    }
+    showPinOverlay("form");
+  } catch (e) {
+    showPinOverlay("checking");
+    $("pin-form-wrap").style.display = "none";
+    $("pin-checking").style.display = "block";
+    $("pin-checking").textContent = `Impossible de joindre le serveur : ${e.message}`;
+  }
+}
+
+async function loadReleveFromServer() {
+  $("upload-status").textContent = "⏳ Chargement de Releve.csv…";
+  try {
+    const resp = await apiFetch("/api/load_releve");
+    if (resp.status === 404) {
+      $("upload-status").textContent = "Aucun Releve.csv — importez un relevé PDF pour créer le fichier.";
+      $("empty-msg").textContent =
+        "Aucun Releve.csv sur le serveur. Utilisez « Ajouter relevé PDF » pour extraire des transactions.";
+      $("empty-state").style.display = "flex";
+      $("kpis").style.display = "none";
+      $("charts-wrap").style.display = "none";
+      $("recurrence-section").style.display = "none";
+      return;
+    }
+    if (resp.status === 401) {
+      const err = await resp.json().catch(() => ({}));
+      if (err.auth_required) {
+        showPinOverlay("form");
+        $("upload-status").textContent = "Code d’accès requis.";
+      }
+      return;
+    }
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: resp.statusText }));
+      $("upload-status").textContent = `❌ ${err.error}`;
+      $("empty-msg").textContent = err.error || "Erreur serveur";
+      $("empty-state").style.display = "flex";
+      return;
+    }
+    const text = await resp.text();
+    const rows = parseCSV(text);
+    $("upload-status").textContent = `✅ ${rows.length} transaction(s) — Releve.csv`;
+    await render(rows);
+  } catch (e) {
+    $("upload-status").textContent = `❌ ${e.message}`;
+    $("empty-msg").textContent = e.message;
+    $("empty-state").style.display = "flex";
+  }
+}
+
+$("btn-upload-pdf").addEventListener("click", () => $("pdf-releve-input").click());
+
+$("pdf-releve-input").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    $("upload-status").textContent = "❌ Choisissez un fichier PDF.";
+    return;
+  }
+  const btn = $("btn-upload-pdf");
+  btn.disabled = true;
+  $("upload-status").textContent = `⏳ Analyse de ${file.name}…`;
+  try {
+    const fd = new FormData();
+    fd.append("pdf", file, file.name);
+    const resp = await apiFetch("/api/releve/pdf", { method: "POST", body: fd });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.status === 401 && data.auth_required) {
+      showPinOverlay("form");
+      throw new Error("Session expirée — saisissez le code.");
+    }
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    $("upload-status").textContent = data.message || "✅ Import terminé.";
+    await loadReleveFromServer();
+  } catch (err) {
+    $("upload-status").textContent = `❌ ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("pin-submit").addEventListener("click", async () => {
+  const btn = $("pin-submit");
+  btn.disabled = true;
+  $("pin-error").textContent = "";
+  try {
+    const r = await apiFetch("/api/auth/pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: $("pin-input").value })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      $("pin-error").textContent = d.error || "Refusé";
+      return;
+    }
+    hidePinOverlay();
+    $("pin-input").value = "";
+    await loadReleveFromServer();
+  } catch (e) {
+    $("pin-error").textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("pin-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") $("pin-submit").click();
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  boot();
+});
+</script>
+</body>
+</html>

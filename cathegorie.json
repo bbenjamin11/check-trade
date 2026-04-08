@@ -1,0 +1,633 @@
+{
+  "known_merchants": {
+    "VRBO": "✈️ Vacances / Hébergement",
+    "MOLLIE *DREAMBABY": "👶 Enfants / Jouets",
+    "DREAMBABY": "👶 Enfants / Jouets",
+    "BACK MARKET": "💻 High-Tech",
+    "DERBAUDRENGHIEN PIERRE": "❓ Divers",
+    "ACTION": "🛍️ Bazar / Discount",
+    "PNVT CYRANO": "🍕 Resto / Bar / Café",
+    "PAY*PATATUS": "👶 Enfants / Jouets",
+    "PATATUS": "👶 Enfants / Jouets",
+    "FLEURISTE ELIANTHUS": "💐 Fleurs / Cadeaux",
+    "FLEURISTE": "💐 Fleurs / Cadeaux",
+    "MEDI-MARKET": "💊 Santé / Pharmacie",
+    "SAGS BOURG ST": "❓ Divers",
+    "SP TEAM BELGIUM - BOIC": "🏋️ Sport / Loisirs",
+    "LESTRESSESASISSOU.FR": "🧸 Enfants / Jouets",
+    "MAMMOUTH": "📺 Streaming / IA / Abonnement",
+    "L'EXOTIC": "🍕 Resto / Bar / Café",
+    "AMSA": "❓ Divers",
+    "HOTEL DU PARC": "✈️ Vacances / Hébergement",
+    "PPG*BEBE9": "👶 Enfants / Jouets",
+    "FIMALAC": "🎭 Culture / Événements",
+    "HBM MACHINES": "🏠 Maison / Logement",
+    "M SYLVAIN PARIS": "💇 Beauté / Bien-être",
+    "SUMUP *CE REPAIR SERVICE": "💻 High-Tech",
+    "SARL CFS": "❓ Divers",
+    "SAS OUBLOUN": "❓ Divers",
+    "KING JOUET": "👶 Enfants / Jouets",
+    "LES COPAINS D ABORD": "🍕 Resto / Bar / Café",
+    "LACHAPELLE CYPRES": "🍕 Resto / Bar / Café",
+    "JOUR DE FETE": "🎭 Culture / Événements",
+    "JACK & JONES": "👗 Mode / Shopping",
+    "LA FOLIE DOUCE": "🍕 Resto / Bar / Café",
+    "FOLIE DOUCE ARCS": "🍕 Resto / Bar / Café",
+    "SCHAMP": "🍕 Resto / Bar / Café",
+    "STEAMGAMES.COM": "🎮 Jeux vidéo",
+    "RITUALS COSMETICS": "💇 Beauté / Bien-être",
+    "CREPERIE BRETONNE": "🍕 Resto / Bar / Café",
+    "SQ *LA PERGOLA": "🍕 Resto / Bar / Café",
+    "SHCMSM": "🏋️ Sport / Loisirs",
+    "LS TASTY": "🍕 Resto / Bar / Café",
+    "VERITAS": "👗 Mode / Shopping",
+    "PIZZA DEL TIGLIO": "🍕 Resto / Bar / Café",
+    "FRIT'HOUSE": "🍕 Resto / Bar / Café",
+    "EXTRASHOP": "🛍️ Bazar / Discount",
+    "SANEF": "⛽ Transport / Carburant",
+    "ASIE A TIK": "🍕 Resto / Bar / Café",
+    "TOURNESOL": "🍕 Resto / Bar / Café",
+    "MOLLIE *HENCORP": "❓ Divers",
+    "UR 802138 CHARLES CORNER": "🍕 Resto / Bar / Café",
+    "THAIA": "🍕 Resto / Bar / Café",
+    "SAS PLASSE": "❓ Divers",
+    "TEMPLE DE LA BIERE": "🍕 Resto / Bar / Café",
+    "VAYAMUNDO": "✈️ Vacances / Hébergement",
+    "DREAMLAND": "👶 Enfants / Jouets",
+    "NEUHAUS": "🛒 Alimentation / Courses",
+    "MDM": "❓ Divers",
+    "PNVT CAPOZZA": "🍕 Resto / Bar / Café",
+    "CASE DEPART": "🎭 Culture / Événements",
+    "ROUGEGORGE": "👗 Mode / Shopping",
+    "TAKEAWAY.COM": "🍕 Resto / Bar / Café",
+    "AUDIBLE.FR": "🎓 Education / Formation",
+    "TOQUE EVENT": "🎭 Culture / Événements",
+    "AMBRUSSUM SUD": "⛽ Transport / Carburant",
+    "GELATISSIMO": "🍕 Resto / Bar / Café",
+    "PAIN CHEZ NINI": "🛒 Alimentation / Courses",
+    "CENTRE DE GUIDANCE": "💊 Santé / Pharmacie",
+    "MPJ ARCH SARL": "🏠 Maison / Logement",
+    "FLUNCH": "🍕 Resto / Bar / Café",
+    "BD WORLD": "🎓 Education / Formation",
+    "TESLA": "⛽ Transport / Carburant",
+    "HP*INSTANT GAMING": "🎮 Jeux vidéo",
+    "PATHE": "🎭 Culture / Événements",
+    "JAMIOULX EXPRESS": "🛒 Alimentation / Courses",
+    "AVA COUILLET": "💇 Beauté / Bien-être",
+    "JEUNESSE JEMEPPE HANDB": "🏋️ Sport / Loisirs",
+    "HPB CHARLEROI": "🍕 Resto / Bar / Café",
+    "NEW GOELAND": "🍕 Resto / Bar / Café",
+    "LA CRECHE": "👶 Enfants / Jouets",
+    "STARBUCKS": "🍕 Resto / Bar / Café",
+    "COFEO SERVICES": "📺 Streaming / IA / Abonnement",
+    "ELECTRO DEPOT": "💻 High-Tech",
+    "ZEVENT": "🎭 Culture / Événements",
+    "IMO CARWASH": "⛽ Transport / Carburant",
+    "DGT*SODEAL": "⛽ Transport / Carburant",
+    "BARBAC": "🍕 Resto / Bar / Café",
+    "AVIA": "⛽ Transport / Carburant",
+    "LEONIDAS": "🛒 Alimentation / Courses",
+    "NAD 103 MARCINELLE": "🍕 Resto / Bar / Café",
+    "LE CONTRASTE": "🍕 Resto / Bar / Café",
+    "NYX*CAFESBIBALVENDING": "🍕 Resto / Bar / Café",
+    "NYA*CAFES BIBAL": "🍕 Resto / Bar / Café",
+    "MAXICOFFEE": "🍕 Resto / Bar / Café",
+    "SCIPIONI": "❓ Divers",
+    "BPOST": "📦 Livraison / Colis",
+    "SUMUP *LA CAFETERIA": "🍕 Resto / Bar / Café",
+    "LA ROSE DES VENT": "🍕 Resto / Bar / Café",
+    "GATE FOUR FLEURUS": "⛽ Transport / Carburant",
+    "CAMPANILE": "✈️ Vacances / Hébergement",
+    "SELECTA": "🍕 Resto / Bar / Café",
+    "REGIE COMMUNALE": "🏠 Maison / Logement",
+    "COMMERCIAL AGR": "❓ Divers",
+    "CHARLEROI TERMINAL": "⛽ Transport / Carburant",
+    "THAI CAFE TIROU": "🍕 Resto / Bar / Café",
+    "CLINIQUE MIEUX VOIR": "💊 Santé / Pharmacie",
+    "LUNE ET L'AUTRE": "💇 Beauté / Bien-être",
+    "RESTO DU PHARE": "🍕 Resto / Bar / Café",
+    "PNVT POINT MIRE DU BAS": "🍕 Resto / Bar / Café",
+    "BE CHATELINEAU PSC CHATE": "🍕 Resto / Bar / Café",
+    "THE HUGGY'S BAR": "🍕 Resto / Bar / Café",
+    "VF BELGIUM BVBA": "👗 Mode / Shopping",
+    "TRAFIC 1278 GOZEE": "👗 Mode / Shopping",
+    "CARREFOUR": "🛒 Alimentation / Courses",
+    "DELHAIZE": "🛒 Alimentation / Courses",
+    "COLRUYT": "🛒 Alimentation / Courses",
+    "LIDL": "🛒 Alimentation / Courses",
+    "ALDI": "🛒 Alimentation / Courses",
+    "AMAZON": "🛍️ Amazon / E-commerce",
+    "NETFLIX": "📺 Streaming / IA / Abonnement",
+    "SPOTIFY": "📺 Streaming / IA / Abonnement",
+    "MISTRAL": "📺 Streaming / IA / Abonnement",
+    "OPENAI": "📺 Streaming / IA / Abonnement",
+    "RYANAIR": "⛽ Transport / Carburant",
+    "SNCB": "⛽ Transport / Carburant",
+    "NMBS": "⛽ Transport / Carburant",
+    "DECATHLON": "🏋️ Sport / Loisirs",
+    "BASIC FIT": "🏋️ Sport / Loisirs",
+    "PHARMACIE": "💊 Santé / Pharmacie",
+    "MULTIPHARMA": "💊 Santé / Pharmacie",
+    "COLORA": "🏠 Maison / Logement",
+    "MONDIAL CAR": "⛽ Transport / Carburant",
+    "BKB DENTAL": "💊 Santé / Pharmacie",
+    "IKEA": "🏠 Maison / Logement",
+    "OMLET": "🐾 Animaux",
+    "PAIRI DAIZA": "🏋️ Sport / Loisirs",
+    "LA BOCCA FELICE": "🍕 Resto / Bar / Café",
+    "GLACIER DEVILERS": "🍕 Resto / Bar / Café",
+    "VINTED": "👗 Mode / Shopping",
+    "HISTOIRE D OR": "👗 Mode / Shopping",
+    "BRASSE-TEMPS": "🍕 Resto / Bar / Café",
+    "AU BUREAU": "🍕 Resto / Bar / Café",
+    "LUXUS COUILLET": "👗 Mode / Shopping",
+    "LA VOILE BLANCHE": "🍕 Resto / Bar / Café",
+    "OIL & VINEGAR": "🛒 Alimentation / Courses",
+    "JYSK": "🏠 Maison / Logement",
+    "LA CIDRERIE": "🍕 Resto / Bar / Café",
+    "POKE BULLES": "🍕 Resto / Bar / Café",
+    "LUNCH GARDEN": "🍕 Resto / Bar / Café",
+    "YOUTUBE PREMIUM": "📺 Streaming / IA / Abonnement"
+  },
+  "categories": {
+    "✈️ Vacances / Hébergement": {
+      "keywords": [
+        "vrbo",
+        "airbnb",
+        "hotel",
+        "hostel",
+        "booking",
+        "gite",
+        "camping",
+        "vacances",
+        "houffalize",
+        "vayamundo"
+      ],
+      "merchants": [
+        "VRBO",
+        "AIRBNB",
+        "BOOKING",
+        "HOTEL",
+        "CAMPANILE",
+        "VAYAMUNDO"
+      ]
+    },
+    "👶 Enfants / Jouets": {
+      "keywords": [
+        "dreambaby",
+        "jouet",
+        "toy",
+        "bebe",
+        "enfant",
+        "creche",
+        "nourrice",
+        "baby",
+        "kid",
+        "lestresse"
+      ],
+      "merchants": [
+        "DREAMBABY",
+        "KING JOUET",
+        "DREAMLAND",
+        "PATATUS",
+        "LESTRESSESASISSOU.FR",
+        "PPG*BEBE9",
+        "LA CRECHE"
+      ]
+    },
+    "💻 High-Tech": {
+      "keywords": [
+        "back market",
+        "repair",
+        "informatique",
+        "ordinateur",
+        "telephone",
+        "smartphone",
+        "tablette",
+        "electro",
+        "electromenager"
+      ],
+      "merchants": [
+        "BACK MARKET",
+        "ELECTRO DEPOT",
+        "SUMUP *CE REPAIR SERVICE",
+        "KREFEL",
+        "COOLBLUE",
+        "FNAC",
+        "MEDIA MARKT"
+      ]
+    },
+    "🎮 Jeux vidéo": {
+      "keywords": [
+        "steam",
+        "gaming",
+        "playstation",
+        "xbox",
+        "nintendo",
+        "game",
+        "epic games",
+        "instant gaming"
+      ],
+      "merchants": [
+        "STEAMGAMES.COM",
+        "HP*INSTANT GAMING",
+        "PLAYSTATION",
+        "XBOX"
+      ]
+    },
+    "🎭 Culture / Événements": {
+      "keywords": [
+        "cinema",
+        "theatre",
+        "concert",
+        "musee",
+        "zevent",
+        "festival",
+        "spectacle",
+        "evenement",
+        "fimalac",
+        "toque",
+        "fete"
+      ],
+      "merchants": [
+        "PATHE",
+        "UGC",
+        "KINEPOLIS",
+        "ZEVENT",
+        "FIMALAC",
+        "CASE DEPART",
+        "TOQUE EVENT",
+        "JOUR DE FETE"
+      ]
+    },
+    "💐 Fleurs / Cadeaux": {
+      "keywords": [
+        "fleuriste",
+        "fleurs",
+        "cadeau",
+        "bouquet",
+        "flower"
+      ],
+      "merchants": [
+        "FLEURISTE ELIANTHUS",
+        "FLEURISTE"
+      ]
+    },
+    "💇 Beauté / Bien-être": {
+      "keywords": [
+        "coiffeur",
+        "coiffure",
+        "beaute",
+        "cosmetics",
+        "rituals",
+        "spa",
+        "massag",
+        "esthetique",
+        "ongle",
+        "bien-etre"
+      ],
+      "merchants": [
+        "RITUALS COSMETICS",
+        "M SYLVAIN PARIS",
+        "AVA COUILLET",
+        "LUNE ET L'AUTRE"
+      ]
+    },
+    "📦 Livraison / Colis": {
+      "keywords": [
+        "bpost",
+        "dhl",
+        "fedex",
+        "ups",
+        "colissimo",
+        "chronopost",
+        "poste",
+        "colis"
+      ],
+      "merchants": [
+        "BPOST"
+      ]
+    },
+    "🛍️ Bazar / Discount": {
+      "keywords": [
+        "action ",
+        "bazar",
+        "discount",
+        "solde",
+        "mammouth",
+        "extrashop"
+      ],
+      "merchants": [
+        "ACTION",
+        "MAMMOUTH",
+        "EXTRASHOP"
+      ]
+    },
+    "🏠 Maison / Logement": {
+      "keywords": [
+        "loyer",
+        "syndic",
+        "charges",
+        "notaire",
+        "immobilier",
+        "colora",
+        "ikea",
+        "jysk",
+        "brico",
+        "leroy",
+        "hbm machines",
+        "regie communale"
+      ],
+      "merchants": [
+        "IKEA",
+        "COLORA",
+        "JYSK",
+        "BRICO",
+        "HBM MACHINES",
+        "MPJ ARCH SARL",
+        "REGIE COMMUNALE AUTONOME"
+      ]
+    },
+    "🛒 Alimentation / Courses": {
+      "keywords": [
+        "carrefour",
+        "delhaize",
+        "colruyt",
+        "lidl",
+        "aldi",
+        "spar",
+        "cora",
+        "boulangerie",
+        "epicerie",
+        "neuhaus",
+        "leonidas",
+        "pain ",
+        "jamioulx"
+      ],
+      "merchants": [
+        "CARREFOUR",
+        "DELHAIZE",
+        "COLRUYT",
+        "LIDL",
+        "ALDI",
+        "SPAR",
+        "CORA",
+        "NEUHAUS",
+        "LEONIDAS",
+        "PAIN CHEZ NINI",
+        "JAMIOULX EXPRESS"
+      ]
+    },
+    "🍕 Resto / Bar / Café": {
+      "keywords": [
+        "restaurant",
+        "brasserie",
+        "burger",
+        "kebab",
+        "friterie",
+        "sushi",
+        "pizza",
+        "cafe",
+        "bar ",
+        "pub ",
+        "starbucks",
+        "taverne",
+        "snack",
+        "traiteur",
+        "crepe",
+        "poke",
+        "glacier",
+        "glacerie"
+      ],
+      "merchants": [
+        "BURGER KING",
+        "QUICK",
+        "MC DONALDS",
+        "STARBUCKS",
+        "TAKEAWAY.COM",
+        "FLUNCH",
+        "SELECTA"
+      ]
+    },
+    "⛽ Transport / Carburant": {
+      "keywords": [
+        "total",
+        "shell",
+        "q8",
+        "lukoil",
+        "esso",
+        "texaco",
+        "avia",
+        "parking",
+        "autoroute",
+        "sanef",
+        "peage",
+        "carwash",
+        "tesla",
+        "charging",
+        "train",
+        "ryanair",
+        "sncb"
+      ],
+      "merchants": [
+        "TOTAL",
+        "SHELL",
+        "Q8",
+        "AVIA",
+        "SANEF",
+        "TESLA",
+        "IMO CARWASH",
+        "CHARLEROI TERMINAL",
+        "GATE FOUR FLEURUS",
+        "AMBRUSSUM SUD",
+        "DGT*SODEAL"
+      ]
+    },
+    "💊 Santé / Pharmacie": {
+      "keywords": [
+        "pharmacie",
+        "medecin",
+        "dentiste",
+        "kine",
+        "hopital",
+        "clinique",
+        "guidance",
+        "medi-market",
+        "sante",
+        "mutuelle"
+      ],
+      "merchants": [
+        "BKB DENTAL",
+        "MEDI-MARKET",
+        "CENTRE DE GUIDANCE",
+        "CLINIQUE MIEUX VOIR",
+        "MULTIPHARMA"
+      ]
+    },
+    "🏋️ Sport / Loisirs": {
+      "keywords": [
+        "decathlon",
+        "sport",
+        "fitness",
+        "gym",
+        "piscine",
+        "handball",
+        "tennis",
+        "running",
+        "pairi daiza",
+        "zevent"
+      ],
+      "merchants": [
+        "DECATHLON",
+        "BASIC FIT",
+        "PAIRI DAIZA",
+        "SP TEAM BELGIUM - BOIC",
+        "JEUNESSE JEMEPPE HANDB"
+      ]
+    },
+    "👗 Mode / Shopping": {
+      "keywords": [
+        "zara",
+        "h&m",
+        "primark",
+        "c&a",
+        "kiabi",
+        "jules",
+        "celio",
+        "vinted",
+        "jack",
+        "veritas",
+        "rougegorge",
+        "trafic",
+        "histoire d or"
+      ],
+      "merchants": [
+        "VINTED",
+        "JACK & JONES",
+        "VERITAS",
+        "ROUGEGORGE",
+        "VF BELGIUM BVBA",
+        "TRAFIC 1278 GOZEE",
+        "HISTOIRE D OR",
+        "LUXUS COUILLET"
+      ]
+    },
+    "🛍️ Amazon / E-commerce": {
+      "keywords": [
+        "amazon",
+        "zalando",
+        "coolblue",
+        "aliexpress",
+        "ebay"
+      ],
+      "merchants": [
+        "AMAZON",
+        "BACK MARKET"
+      ]
+    },
+    "📺 Streaming / IA / Abonnement": {
+      "keywords": [
+        "netflix",
+        "spotify",
+        "disney",
+        "amazon prime",
+        "apple",
+        "proximus",
+        "voo",
+        "telenet",
+        "openai",
+        "mistral",
+        "cofeo",
+        "adobe",
+        "microsoft",
+        "google one"
+      ],
+      "merchants": [
+        "NETFLIX",
+        "SPOTIFY",
+        "OPENAI",
+        "MISTRAL",
+        "COFEO SERVICES",
+        "AUDIBLE.FR"
+      ]
+    },
+    "🎓 Education / Formation": {
+      "keywords": [
+        "audible",
+        "livre",
+        "librairie",
+        "bd world",
+        "formation",
+        "udemy",
+        "coursera"
+      ],
+      "merchants": [
+        "AUDIBLE.FR",
+        "BD WORLD"
+      ]
+    },
+    "🐾 Animaux": {
+      "keywords": [
+        "omlet",
+        "veterinaire",
+        "veto",
+        "animaux",
+        "pet ",
+        "croquette",
+        "tom & co",
+        "welp"
+      ],
+      "merchants": [
+        "OMLET",
+        "TOM & CO",
+        "WELP"
+      ]
+    },
+    "🏦 Banque / Finance / Investissement": {
+      "keywords": [
+        "savings",
+        "invest",
+        "trading",
+        "bourse",
+        "dividende",
+        "assurance",
+        "frais bancaire",
+        "commission"
+      ],
+      "merchants": [
+        "TRADE REPUBLIC",
+        "SAVINGS PLAN",
+        "DEGIRO"
+      ]
+    },
+    "❓ Divers": {
+      "keywords": [],
+      "merchants": []
+    }
+  },
+  "priority_order": [
+    "known_merchants",
+    "🏦 Banque / Finance / Investissement",
+    "👶 Enfants / Jouets",
+    "🛒 Alimentation / Courses",
+    "🍕 Resto / Bar / Café",
+    "📺 Streaming / IA / Abonnement",
+    "🎮 Jeux vidéo",
+    "🛍️ Amazon / E-commerce",
+    "💻 High-Tech",
+    "👗 Mode / Shopping",
+    "⛽ Transport / Carburant",
+    "💊 Santé / Pharmacie",
+    "🏋️ Sport / Loisirs",
+    "🏠 Maison / Logement",
+    "✈️ Vacances / Hébergement",
+    "💐 Fleurs / Cadeaux",
+    "💇 Beauté / Bien-être",
+    "🎭 Culture / Événements",
+    "📦 Livraison / Colis",
+    "🛍️ Bazar / Discount",
+    "🎓 Education / Formation",
+    "🐾 Animaux",
+    "❓ Divers"
+  ]
+}
