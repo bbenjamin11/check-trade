@@ -22,6 +22,10 @@
       --neg:      #f87171;
       --text:     #e2e2f0;
       --muted:    #6b6b8a;
+      /* Ajout : couleurs spéculatives pour nouvelles fonctionnalités potentielles */
+      --info:   #38bdf8;
+      --warn:   #fbbf24;
+      --debug:  #818cf8;
     }
 
     body {
@@ -190,20 +194,21 @@
     #btn-reset-zoom:hover { border-color: var(--accent); }
 
     /* ── D3 Donut ── */
-    #d3-wrap {
+    #d3-wrap, .d3-wrap {
       display: flex;
       align-items: center;
       gap: 1.5rem;
       flex-wrap: nowrap;
     }
-    #d3-donut-container { flex: 0 0 220px; }
-    #d3-donut { width: 220px; height: 220px; }
-    #d3-legend {
+    #d3-donut-container, .d3-donut-container { flex: 0 0 220px; }
+    #d3-donut, #d3-donut-month, #d3-donut-6m { width: 220px; height: 220px; }
+    #d3-legend, #d3-legend-month, #d3-legend-6m {
       flex: 1;
       display: flex;
       flex-direction: column;
       gap: 0.3rem;
       font-size: 0.8rem;
+
       max-height: 300px;
       overflow-y: auto;
     }
@@ -240,6 +245,25 @@
     .monthly-table tbody tr { cursor: pointer; transition: background 0.15s; }
     .monthly-table tbody tr:hover { background: var(--surface2); }
     .monthly-table tbody tr.active-month { background: rgba(167,139,250,0.12); border-left: 3px solid var(--accent); }
+    .monthly-mini-card {
+      margin-top: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.8rem;
+      background: var(--surface2);
+      cursor: pointer;
+    }
+    .monthly-mini-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #c4b5fd;
+      font-size: 0.82rem;
+      margin-bottom: 0.65rem;
+    }
+    .monthly-mini-wrap { max-height: 220px; overflow: auto; transition: max-height 0.2s ease; }
+    .monthly-mini-card.expanded .monthly-mini-wrap { max-height: 65vh; }
+    .monthly-mini-hint { color: var(--muted); font-size: 0.72rem; }
 
     /* ── Modal / drawer transactions mois ── */
     #month-drawer {
@@ -518,6 +542,30 @@
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--accent2); }
+
+    /* Ajouts : Styles pour logs ou alertes popin (ex: debug/info/warn) */
+    .alert-log {
+      display: flex;
+      align-items: center;
+      gap: 0.85em;
+      padding: 0.6em 1.15em;
+      margin: 1.2em auto;
+      border-radius: 8px;
+      font-size: 0.93em;
+      font-weight: 500;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.09);
+      border: 1.5px solid;
+      max-width: 590px;
+      transition: opacity 0.2s;
+    }
+    .alert-log-info  { background: rgba(56,189,248,0.10); border-color: var(--info); color: var(--info); }
+    .alert-log-warn  { background: rgba(251,191,36,0.10); border-color: var(--warn); color: var(--warn); }
+    .alert-log-debug { background: rgba(129,140,248,0.10); border-color: var(--debug); color: var(--debug); }
+    .alert-log svg {
+      width: 1.3em; height: 1.3em;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
@@ -588,50 +636,81 @@
   <!-- Graphiques -->
   <div id="charts-wrap" style="display:none">
 
-    <p class="section-title">📅 Évolution quotidienne</p>
-    <div class="charts-grid">
-      <div class="card col-12">
-        <h2>📅 Entrées vs Sorties — jour par jour</h2>
-        <div class="zoom-hint">
-          <kbd>Molette</kbd> pour zoomer · <kbd>Glisser</kbd> pour naviguer
-          <button id="btn-reset-zoom">↺ Réinitialiser</button>
-        </div>
-        <canvas id="c-daily"></canvas>
-      </div>
-    </div>
-
     <p class="section-title">📆 Vue mensuelle</p>
     <div class="charts-grid">
       <div class="card col-12">
         <h2>📆 Entrées · Sorties · Net — par mois <span style="font-size:0.72rem;color:var(--muted);font-weight:400">(cliquez une barre ou une ligne pour voir les transactions du mois)</span></h2>
         <canvas id="c-monthly"></canvas>
-        <div class="monthly-table-wrap">
-          <table class="monthly-table" id="tbl-monthly">
-            <thead>
-              <tr>
-                <th>Mois</th><th>Entrées (€)</th><th>Sorties (€)</th><th>Net (€)</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <div class="monthly-mini-card" id="monthly-mini-card">
+          <div class="monthly-mini-title">
+            <span>📋 Tableau mensuel (carte compacte)</span>
+            <span class="monthly-mini-hint">clic pour agrandir / réduire</span>
+          </div>
+          <div class="monthly-mini-wrap">
+            <div class="monthly-table-wrap" style="margin-top:0">
+              <table class="monthly-table" id="tbl-monthly">
+                <thead>
+                  <tr>
+                    <th>Mois</th><th>Entrées (€)</th><th>Sorties (€)</th><th>Net (€)</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <p class="section-title">🍩 Répartition &amp; Marchands</p>
+    <p class="section-title">🍩 Répartition &amp; Marchands (par période)</p>
     <div class="charts-grid">
-      <div class="card col-4" id="card-donut">
-        <h2>🍩 Sorties par catégorie</h2>
-        <div id="d3-wrap">
-          <div id="d3-donut-container">
-            <svg id="d3-donut"></svg>
-          </div>
+
+      <!-- PAIRE 1 : mois courant -->
+      <div class="card col-6">
+        <h2>🍩 Sorties par catégorie — <span style="color:var(--accent)">mois courant</span></h2>
+        <div class="d3-wrap">
+          <div class="d3-donut-container"><svg id="d3-donut-month"></svg></div>
+          <div id="d3-legend-month"></div>
+        </div>
+      </div>
+      <div class="card col-6">
+        <h2>🔴 Top 20 marchands — <span style="color:var(--muted)">mois courant</span></h2>
+        <canvas id="c-sorties-desc-month"></canvas>
+      </div>
+
+      <!-- PAIRE 2 : 6 derniers mois -->
+      <div class="card col-6">
+        <h2>🍩 Sorties par catégorie — <span style="color:var(--accent)">6 derniers mois</span></h2>
+        <div class="d3-wrap">
+          <div class="d3-donut-container"><svg id="d3-donut-6m"></svg></div>
+          <div id="d3-legend-6m"></div>
+        </div>
+      </div>
+      <div class="card col-6">
+        <h2>🔴 Top 20 marchands — <span style="color:var(--muted)">6 derniers mois</span></h2>
+        <canvas id="c-sorties-desc-6m"></canvas>
+      </div>
+
+      <!-- PAIRE 3 : totalité -->
+      <div class="card col-6">
+        <h2>🍩 Sorties par catégorie — <span style="color:var(--muted)">totalité</span></h2>
+        <div class="d3-wrap">
+          <div class="d3-donut-container"><svg id="d3-donut"></svg></div>
           <div id="d3-legend"></div>
         </div>
       </div>
-      <div class="card col-8">
-        <h2>🔴 Top 20 marchands — sorties</h2>
+      <div class="card col-6">
+        <h2>🔴 Top 20 marchands — <span style="color:var(--muted)">totalité</span></h2>
         <canvas id="c-sorties-desc"></canvas>
+      </div>
+
+    </div>
+
+    <p class="section-title">📈 Cumul mensuel 1–31</p>
+    <div class="charts-grid">
+      <div class="card col-12">
+        <h2>📈 Cumul mensuel (1 au 31) — moyenne dernière année vs mois courant</h2>
+        <canvas id="c-cumul-monthday"></canvas>
       </div>
     </div>
 
@@ -643,13 +722,14 @@
       </div>
     </div>
 
-  </div>
-
+    
   <!-- Récurrence marchands -->
   <div id="recurrence-section" style="display:none">
     <p class="section-title" style="margin-top:2.5rem">🔁 Récurrence marchands</p>
     <input id="rec-search" type="search" placeholder="🔍 Filtrer marchand ou catégorie…"/>
     <div class="rec-table-wrap" id="rec-table-wrap"></div>
+  </div>
+
   </div>
 
 </main>
@@ -770,7 +850,12 @@ function openDrawer(monthLabel, rows) {
 
   const tbody = $("drawer-table").querySelector("tbody");
   tbody.innerHTML = "";
-  [...rows].sort((a,b) => toISO(b.DATE).localeCompare(toISO(a.DATE))).forEach(r => {
+  // Trie du plus récent au plus ancien
+  const sorted = [...rows].sort((a, b) => {
+    // Comparaison ISO décroissante pour le plus récent en haut
+    return toISO(b.DATE).localeCompare(toISO(a.DATE));
+  });
+  sorted.forEach(r => {
     const out = parseEur(r["MONEY OUT"]);
     const inp = parseEur(r["MONEY IN"]);
     const tr  = document.createElement("tr");
@@ -802,10 +887,10 @@ document.addEventListener("keydown", e => { if(e.key==="Escape") closeDrawer(); 
 /* ═══════════════════════════════════════════
    D3 — DONUT
 ═══════════════════════════════════════════ */
-function renderD3Donut(catTotals) {
-  const svg = d3.select("#d3-donut");
+function renderD3Donut(catTotals, donutSelector="#d3-donut", legendSelector="#d3-legend") {
+  const svg = d3.select(donutSelector);
   svg.selectAll("*").remove();
-  d3.select("#d3-legend").html("");
+  d3.select(legendSelector).html("");
 
   const W=220, H=220, R=Math.min(W,H)/2-8, IR=R*0.54;
   svg.attr("viewBox",`0 0 ${W} ${H}`).attr("width",W).attr("height",H);
@@ -839,7 +924,7 @@ function renderD3Donut(catTotals) {
       lbl.text("Total"); lbl2.text(fmtShort(total));
     });
 
-  const legendEl = d3.select("#d3-legend");
+  const legendEl = d3.select(legendSelector);
   data.forEach(d => {
     const item = legendEl.append("div").attr("class","d3-legend-item");
     item.append("div").attr("class","d3-legend-dot").style("background",color(d.cat));
@@ -995,6 +1080,9 @@ async function render(rows) {
 
   const dailyIn={}, dailyOut={}, monthlyIn={}, monthlyOut={};
   const categoryTotals={}, merchantMap={}, descSortiesMonthly={};
+  const catTotalsByMonth = {};
+  const merchantOutByMonth = {};
+  const dayCumulByMonth = {};
   let totalIn=0, totalOut=0;
 
   /* Index rows par mois */
@@ -1008,11 +1096,16 @@ async function render(rows) {
 
     if (!rowsByMonth[mKey]) rowsByMonth[mKey] = [];
     rowsByMonth[mKey].push(r);
+    if (!dayCumulByMonth[mKey]) dayCumulByMonth[mKey] = Array.from({length:31}, () => ({in:0, out:0}));
 
     if (inp > 0) {
       totalIn += inp;
       dailyIn[iso]    = (dailyIn[iso]||0) + inp;
       monthlyIn[mKey] = (monthlyIn[mKey]||0) + inp;
+      const dayNum = parseInt((r.DATE||"").split(/\s+/)[0], 10);
+      if (!Number.isNaN(dayNum) && dayNum >= 1 && dayNum <= 31) {
+        dayCumulByMonth[mKey][dayNum - 1].in += inp;
+      }
     }
     if (out > 0) {
       totalOut += out;
@@ -1021,19 +1114,29 @@ async function render(rows) {
 
       const category = (r.CATEGORY||"❓ Divers").trim();
       categoryTotals[category] = (categoryTotals[category]||0) + out;
+      if (!catTotalsByMonth[mKey]) catTotalsByMonth[mKey] = {};
+      catTotalsByMonth[mKey][category] = (catTotalsByMonth[mKey][category]||0) + out;
 
       const mKey2 = r.MERCHANT||r.DESCRIPTION||"—";
       if (!merchantMap[mKey2]) merchantMap[mKey2] = {merchant:mKey2, category, count:0, total:0};
       merchantMap[mKey2].count += 1;
       merchantMap[mKey2].total += out;
+      if (!merchantOutByMonth[mKey]) merchantOutByMonth[mKey] = {};
+      merchantOutByMonth[mKey][mKey2] = (merchantOutByMonth[mKey][mKey2]||0) + out;
 
       const desc = (r.MERCHANT||r.DESCRIPTION||"—").trim();
       if (!descSortiesMonthly[desc]) descSortiesMonthly[desc] = {};
       descSortiesMonthly[desc][mKey] = (descSortiesMonthly[desc][mKey]||0) + out;
+
+      const dayNum = parseInt((r.DATE||"").split(/\s+/)[0], 10);
+      if (!Number.isNaN(dayNum) && dayNum >= 1 && dayNum <= 31) {
+        dayCumulByMonth[mKey][dayNum - 1].out += out;
+      }
     }
   });
 
   const months = [...new Set([...Object.keys(monthlyOut),...Object.keys(monthlyIn)])].sort();
+  const latestMonth = months.length ? months[months.length - 1] : "";
   const net = totalIn - totalOut;
 
   /* ── KPIs ── */
@@ -1049,34 +1152,7 @@ async function render(rows) {
 
   const allDates = [...new Set([...Object.keys(dailyIn),...Object.keys(dailyOut)])].sort();
 
-  /* ── G1 : Quotidien avec zoom ── */
-  _charts.daily = new Chart($("c-daily"), {
-    type:"bar",
-    data:{
-      labels: allDates,
-      datasets:[
-        { label:"Entrées (€)",  data: allDates.map(d=>dailyIn[d]||0),
-          backgroundColor:C_IN,  order:2 },
-        { label:"Sorties (€)",  data: allDates.map(d=>dailyOut[d]||0),
-          backgroundColor:C_OUT, order:2 }
-      ]
-    },
-    options: baseOpts({
-      plugins:{
-        legend:{ labels:{color:"#ccc",font:{size:11}} },
-        zoom:{
-          pan:{ enabled:true, mode:"x" },
-          zoom:{ wheel:{enabled:true}, pinch:{enabled:true}, mode:"x" }
-        }
-      }
-    })
-  });
-
-  $("btn-reset-zoom").addEventListener("click", () => {
-    _charts.daily.resetZoom();
-  });
-
-  /* ── G2 : Mensuel avec clic ── */
+  /* ── G1 : Mensuel avec clic ── */
   const monthLabels = months;
   _charts.monthly = new Chart($("c-monthly"), {
     type:"bar",
@@ -1113,7 +1189,11 @@ async function render(rows) {
   /* ── Tableau mensuel cliquable ── */
   const mTbody = $("tbl-monthly").querySelector("tbody");
   mTbody.innerHTML = "";
-  months.forEach((m,idx) => {
+
+  // MODIF : on inverse pour afficher le plus récent en haut
+  const monthsReversed = [...months].reverse();
+
+  monthsReversed.forEach((m, idx) => {
     const inp = monthlyIn[m]||0;
     const out = monthlyOut[m]||0;
     const n   = inp - out;
@@ -1124,15 +1204,38 @@ async function render(rows) {
       <td class="neg">${fmtShort(out)}</td>
       <td class="${n>=0?"pos":"neg"}">${fmtShort(n)}</td>`;
     tr.addEventListener("click", () => {
-      document.querySelectorAll(".monthly-table tbody tr").forEach(r=>r.classList.remove("active-month"));
-      tr.classList.add("active-month");
-      openDrawer(m, rowsByMonth[m]||[]);
+      document.querySelectorAll(".monthly-table tbody tr").forEach((r, ridx) => {
+        r.classList.toggle("active-month", ridx === idx);
+      });
+      openDrawer(m, rowsByMonth[m] || []);
     });
     mTbody.appendChild(tr);
   });
 
-  /* ── D3 Donut ── */
-  renderD3Donut(Object.entries(categoryTotals).map(([cat,total])=>({cat,total})));
+  /* ── D3 Donuts : totalité + dernier mois ── */
+  renderD3Donut(
+    Object.entries(categoryTotals).map(([cat,total])=>({cat,total})),
+    "#d3-donut",
+    "#d3-legend"
+  );
+  renderD3Donut(
+    Object.entries(catTotalsByMonth[latestMonth] || {}).map(([cat,total])=>({cat,total})),
+    "#d3-donut-month",
+    "#d3-legend-month"
+  );
+  const last6Months = months.slice(-6);
+  const catTotals6m = {};
+  last6Months.forEach(m => {
+    const block = catTotalsByMonth[m] || {};
+    Object.entries(block).forEach(([cat, total]) => {
+      catTotals6m[cat] = (catTotals6m[cat] || 0) + total;
+    });
+  });
+  renderD3Donut(
+    Object.entries(catTotals6m).map(([cat,total])=>({cat,total})),
+    "#d3-donut-6m",
+    "#d3-legend-6m"
+  );
 
   /* ── G3 : Top 20 marchands horizontal ── */
   const descTotals = Object.entries(descSortiesMonthly)
@@ -1155,6 +1258,187 @@ async function render(rows) {
       scales:{
         x:{ ticks:{color:"#888"}, grid:{color:"#1e1e32"} },
         y:{ ticks:{color:"#ccc",font:{size:10}}, grid:{color:"#1e1e32"} }
+      }
+    })
+  });
+
+  const descTotalsMonth = Object.entries(merchantOutByMonth[latestMonth] || {})
+    .map(([desc,total]) => ({ desc, total }))
+    .sort((a,b)=>b.total-a.total).slice(0,20);
+
+  _charts.sortiesMonth = new Chart($("c-sorties-desc-month"), {
+    type:"bar",
+    data:{
+      labels: descTotalsMonth.map(d=>d.desc),
+      datasets:[{
+        label: latestMonth ? `Dernier mois (${latestMonth})` : "Dernier mois",
+        data:  descTotalsMonth.map(d=>d.total),
+        backgroundColor: genColors(Math.max(descTotalsMonth.length, 1))
+      }]
+    },
+    options: baseOpts({
+      indexAxis:"y",
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ ticks:{color:"#888"}, grid:{color:"#1e1e32"} },
+        y:{ ticks:{color:"#ccc",font:{size:10}}, grid:{color:"#1e1e32"} }
+      }
+    })
+  });
+  const descTotals6mMap = {};
+  last6Months.forEach(m => {
+    const block = merchantOutByMonth[m] || {};
+    Object.entries(block).forEach(([desc, total]) => {
+      descTotals6mMap[desc] = (descTotals6mMap[desc] || 0) + total;
+    });
+  });
+  const descTotals6m = Object.entries(descTotals6mMap)
+    .map(([desc,total]) => ({ desc, total }))
+    .sort((a,b)=>b.total-a.total).slice(0,20);
+  _charts.sorties6m = new Chart($("c-sorties-desc-6m"), {
+    type:"bar",
+    data:{
+      labels: descTotals6m.map(d=>d.desc),
+      datasets:[{
+        label: last6Months.length ? `6 derniers mois (${last6Months[0]} → ${last6Months[last6Months.length-1]})` : "6 derniers mois",
+        data:  descTotals6m.map(d=>d.total),
+        backgroundColor: genColors(Math.max(descTotals6m.length, 1))
+      }]
+    },
+    options: baseOpts({
+      indexAxis:"y",
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ ticks:{color:"#888"}, grid:{color:"#1e1e32"} },
+        y:{ ticks:{color:"#ccc",font:{size:10}}, grid:{color:"#1e1e32"} }
+      }
+    })
+  });
+
+  /* ── G3b : Cumul mensuel jour 1-31 (moyenne tous mois et 6 mois vs mois courant) ── */
+  const dayLabels = Array.from({length:31}, (_,i)=>String(i+1));
+  // On prend la totalité des mois disponibles pour la moyenne principale
+  const monthKeysForAvg = months;
+  const monthKeysFor6m = months.slice(-6);
+
+  const avgInPerDay = Array.from({length:31}, (_,i) => {
+    if (!monthKeysForAvg.length) return 0;
+    return monthKeysForAvg.reduce((s,m)=>s+dayCumulByMonth[m][i].in,0) / monthKeysForAvg.length;
+  });
+  const avgOutPerDay = Array.from({length:31}, (_,i) => {
+    if (!monthKeysForAvg.length) return 0;
+    return monthKeysForAvg.reduce((s,m)=>s+dayCumulByMonth[m][i].out,0) / monthKeysForAvg.length;
+  });
+
+  // Moyenne jour par jour sur 6 derniers mois (inchangé)
+  const avgInPerDay6m = Array.from({length:31}, (_,i) => {
+    if (!monthKeysFor6m.length) return 0;
+    return monthKeysFor6m.reduce((s,m) => s + dayCumulByMonth[m][i].in, 0) / monthKeysFor6m.length;
+  });
+  const avgOutPerDay6m = Array.from({length:31}, (_,i) => {
+    if (!monthKeysFor6m.length) return 0;
+    return monthKeysFor6m.reduce((s,m) => s + dayCumulByMonth[m][i].out, 0) / monthKeysFor6m.length;
+  });
+
+  const avgCumIn = [], avgCumOut = [], curCumIn = [], curCumOut = [];
+  const avgCumIn6m = [], avgCumOut6m = [];
+  let aIn=0, aOut=0, cIn=0, cOut=0;
+  let a6In=0, a6Out=0;
+  for (let i=0; i<31; i++) {
+    aIn += avgInPerDay[i]; aOut += avgOutPerDay[i];
+    a6In += avgInPerDay6m[i]; a6Out += avgOutPerDay6m[i];
+    const cur = dayCumulByMonth[latestMonth]?.[i] || {in:0, out:0};
+    cIn += cur.in; cOut += cur.out;
+    avgCumIn.push(aIn);   avgCumOut.push(aOut);
+    avgCumIn6m.push(a6In); avgCumOut6m.push(a6Out);
+    curCumIn.push(cIn);   curCumOut.push(cOut);
+  }
+  _charts.cumulMonthDay = new Chart($("c-cumul-monthday"), {
+    type:"line",
+    data:{
+      labels: dayLabels,
+      datasets:[
+        // Sorties (totalité) - plus épaisses, couleur foncée
+        { 
+          label:"Sorties cumulées (tous mois)", 
+          data:avgCumOut, 
+          borderColor:"rgba(239,68,68,0.90)", 
+          backgroundColor:"rgba(239,68,68,0.06)", 
+          fill:false, 
+          tension:0.25, 
+          pointRadius:0, 
+          borderDash:[8,2], 
+          borderWidth:2.2, 
+          hidden: false
+        },
+        // Sorties (6 derniers mois) - plus claire
+        { 
+          label:"Sorties cumulées (6 mois récents)", 
+          data:avgCumOut6m, 
+          borderColor:"rgba(250,137,34,0.82)", 
+          backgroundColor:"rgba(251,191,36,0.10)", 
+          fill:false, 
+          tension:0.25, 
+          pointRadius:0, 
+          borderDash:[2,3], 
+          borderWidth:1.7, 
+          hidden: false
+        },
+        // Sorties courantes - ligne simple plus fine, accent vif
+        { 
+          label:`Sorties cumulées (${latestMonth || "mois courant"})`, 
+          data:curCumOut, 
+          borderColor:C_OUT, 
+          backgroundColor:"rgba(248,113,113,0.18)", 
+          fill:false, 
+          tension:0.25, 
+          pointRadius:0, 
+          borderWidth:2.5, 
+          hidden: false
+        },
+        // Entrées (totalité) - décoché par défaut
+        { 
+          label:"Entrées cumulées (tous mois)", 
+          data:avgCumIn, 
+          borderColor:"rgba(16,185,129,0.75)", 
+          backgroundColor:"rgba(16,185,129,0.08)", 
+          fill:false, 
+          tension:0.25, 
+          pointRadius:0, 
+          borderDash:[8,2], 
+          borderWidth:2.2,
+          hidden: true 
+        },
+        // Entrées (6 derniers mois) - décoché par défaut, teinte différente
+        { 
+          label:"Entrées cumulées (6 mois récents)", 
+          data:avgCumIn6m, 
+          borderColor:"rgba(56,189,248,0.80)", 
+          backgroundColor:"rgba(56,189,248,0.12)", 
+          fill:false, 
+          tension:0.25, 
+          pointRadius:0, 
+          borderDash:[2,3], 
+          borderWidth:1.7,
+          hidden: true
+        },
+        // Entrées courantes - décoché aussi (optionnel)
+        { 
+          label:`Entrées cumulées (${latestMonth || "mois courant"})`, 
+          data:curCumIn, 
+          borderColor:C_IN, 
+          backgroundColor:"rgba(74,222,128,0.14)", 
+          fill:false, 
+          tension:0.25, 
+          pointRadius:0, 
+          borderWidth:2.5,
+          hidden: true 
+        }
+      ]
+    },
+    options: baseOpts({
+      plugins: { 
+        legend: { display: true }
       }
     })
   });
@@ -1335,6 +1619,14 @@ $("pin-input").addEventListener("keydown", e => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  const mini = $("monthly-mini-card");
+  if (mini) {
+    mini.addEventListener("click", (e) => {
+      const isRowClick = !!e.target.closest("tbody tr");
+      if (isRowClick) return;
+      mini.classList.toggle("expanded");
+    });
+  }
   boot();
 });
 </script>
