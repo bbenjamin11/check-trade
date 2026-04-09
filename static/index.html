@@ -163,6 +163,34 @@
     @media (max-width: 900px) {
       .col-8, .col-4, .col-6, .col-12 { grid-column: span 12; }
     }
+    @media (max-width: 600px) {
+      header {
+        padding: 0.9rem 1rem;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+      }
+      
+      header h1 {
+        font-size: 1.1rem;
+      }
+      
+      .header-actions {
+        align-items: stretch; /* pleine largeur */
+      }
+      
+      #btn-upload-pdf {
+        width: 100%;
+        justify-content: center;
+        padding: 0.65rem 1rem;
+      }
+      
+      #upload-status {
+        text-align: center;
+        font-size: 0.72rem;
+      }
+    }
+
 
     /* ── Hint zoom ── */
     .zoom-hint {
@@ -640,8 +668,8 @@
     <div class="charts-grid">
       <div class="card col-12">
         <h2>📆 Entrées · Sorties · Net — par mois <span style="font-size:0.72rem;color:var(--muted);font-weight:400">(cliquez une barre ou une ligne pour voir les transactions du mois)</span></h2>
-        <canvas id="c-monthly"></canvas>
-        <div class="monthly-mini-card" id="monthly-mini-card">
+        <div id="g1-monthly" style="width:100%;"></div>
+          <div class="monthly-mini-card" id="monthly-mini-card">
           <div class="monthly-mini-title">
             <span>📋 Tableau mensuel (carte compacte)</span>
             <span class="monthly-mini-hint">clic pour agrandir / réduire</span>
@@ -675,7 +703,7 @@
       </div>
       <div class="card col-6">
         <h2>🔴 Top 20 marchands — <span style="color:var(--muted)">mois courant</span></h2>
-        <canvas id="c-sorties-desc-month"></canvas>
+        <div id="g3-sorties-month" style="width:100%;"></div>
       </div>
 
       <!-- PAIRE 2 : 6 derniers mois -->
@@ -688,7 +716,7 @@
       </div>
       <div class="card col-6">
         <h2>🔴 Top 20 marchands — <span style="color:var(--muted)">6 derniers mois</span></h2>
-        <canvas id="c-sorties-desc-6m"></canvas>
+        <div id="g3-sorties-6m" style="width:100%;"></div>
       </div>
 
       <!-- PAIRE 3 : totalité -->
@@ -701,7 +729,7 @@
       </div>
       <div class="card col-6">
         <h2>🔴 Top 20 marchands — <span style="color:var(--muted)">totalité</span></h2>
-        <canvas id="c-sorties-desc"></canvas>
+        <div id="g3-sorties" style="width:100%;"></div>
       </div>
 
     </div>
@@ -710,7 +738,8 @@
     <div class="charts-grid">
       <div class="card col-12">
         <h2>📈 Cumul mensuel (1 au 31) — moyenne dernière année vs mois courant</h2>
-        <canvas id="c-cumul-monthday"></canvas>
+        <div id="g4-cumul-monthday" style="width:100%;"></div>
+  
       </div>
     </div>
 
@@ -718,7 +747,8 @@
     <div class="charts-grid">
       <div class="card col-12">
         <h2>📈 Cumul entrées · sorties · écart dans le temps</h2>
-        <canvas id="c-cumul"></canvas>
+        <div id="g5-cumul" style="width:100%;"></div>
+  
       </div>
     </div>
 
@@ -814,11 +844,18 @@ function baseOpts(extra={}) {
 
 let _charts = {};
 let _allRows = [];
-
 function destroyCharts() {
-  Object.values(_charts).forEach(c => c.destroy());
+  // Chart.js
+  Object.values(_charts).forEach(c => { try { c.destroy(); } catch(e){} });
   _charts = {};
+  // D3
+  ["#g1-monthly","#g3-sorties","#g3-sorties-month","#g3-sorties-6m",
+   "#g4-cumul-monthday","#g5-cumul"].forEach(id => {
+    const el = document.querySelector(id);
+    if (el) el.innerHTML = "";
+  });
 }
+
 
 async function ensureCategories() {
   if (window._cats && window._cats.length) return window._cats;
@@ -896,42 +933,44 @@ function renderD3Donut(catTotals, donutSelector="#d3-donut", legendSelector="#d3
   svg.attr("viewBox",`0 0 ${W} ${H}`).attr("width",W).attr("height",H);
   const g = svg.append("g").attr("transform",`translate(${W/2},${H/2})`);
 
-  const data   = catTotals.filter(d=>d.total>0).sort((a,b)=>b.total-a.total);
-  const colors = genColors(data.length);
-  const color  = d3.scaleOrdinal().domain(data.map(d=>d.cat)).range(colors);
-  const total  = d3.sum(data, d=>d.total);
+  const data  = catTotals.filter(d=>d.total>0).sort((a,b)=>b.total-a.total);
+  const total = d3.sum(data, d=>d.total);
+
+  // ✅ Remplace genColors + scaleOrdinal par catColor direct
+  const color = d => catColor(d.cat);
 
   const pie    = d3.pie().value(d=>d.total).sort(null);
   const arc    = d3.arc().innerRadius(IR).outerRadius(R);
   const arcHov = d3.arc().innerRadius(IR).outerRadius(R+8);
 
-  const lbl    = g.append("text").attr("text-anchor","middle").attr("dy","-0.3em")
+  const lbl  = g.append("text").attr("text-anchor","middle").attr("dy","-0.3em")
     .attr("fill","#a78bfa").attr("font-size",11).attr("font-weight",700);
-  const lbl2   = g.append("text").attr("text-anchor","middle").attr("dy","1.1em")
+  const lbl2 = g.append("text").attr("text-anchor","middle").attr("dy","1.1em")
     .attr("fill","#ccc").attr("font-size",10);
   lbl.text("Total"); lbl2.text(fmtShort(total));
 
   g.selectAll("path").data(pie(data)).join("path")
-    .attr("d",arc)
-    .attr("fill",d=>color(d.data.cat))
+    .attr("d", arc)
+    .attr("fill", d => color(d.data))       // ✅
     .attr("stroke","#0b0b10").attr("stroke-width",2)
-    .on("mouseover",function(e,d){
-      d3.select(this).attr("d",arcHov);
+    .on("mouseover", function(e,d){
+      d3.select(this).attr("d", arcHov);
       lbl.text(d.data.cat); lbl2.text(fmtShort(d.data.total));
     })
-    .on("mouseout",function(e,d){
-      d3.select(this).attr("d",arc);
+    .on("mouseout", function(e,d){
+      d3.select(this).attr("d", arc);
       lbl.text("Total"); lbl2.text(fmtShort(total));
     });
 
   const legendEl = d3.select(legendSelector);
   data.forEach(d => {
     const item = legendEl.append("div").attr("class","d3-legend-item");
-    item.append("div").attr("class","d3-legend-dot").style("background",color(d.cat));
+    item.append("div").attr("class","d3-legend-dot").style("background", catColor(d.cat)); // ✅
     item.append("span").attr("class","d3-legend-name").text(d.cat);
     item.append("span").attr("class","d3-legend-amt").text(fmtShort(d.total));
   });
 }
+
 
 /* ═══════════════════════════════════════════
    TABLEAU RÉCURRENCE
@@ -1073,6 +1112,165 @@ function renderRecurrenceTable(merchantMap) {
 /* ═══════════════════════════════════════════
    RENDER PRINCIPAL
 ═══════════════════════════════════════════ */
+/* ── D3 Helpers Charts ── */
+function d3ChartSize(selector) {
+  const el = typeof selector === "string" ? document.querySelector(selector) : selector;
+  const w = el.clientWidth || 400;
+  const isMobile = window.innerWidth < 600;
+  return { w, h: isMobile ? 200 : 300 };
+}
+
+function d3Tooltip() {
+  let tip = document.getElementById("d3-tip-global");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.id = "d3-tip-global";
+    tip.style.cssText = `position:fixed;background:#1e1e32;border:1px solid #333;
+      color:#eee;padding:8px 12px;border-radius:8px;font-size:12px;
+      pointer-events:none;opacity:0;transition:opacity .15s;z-index:9999;`;
+    document.body.appendChild(tip);
+  }
+  return {
+    show(html, evt) {
+      tip.innerHTML = html;
+      tip.style.opacity = 1;
+      tip.style.left = (evt.clientX + 14) + "px";
+      tip.style.top  = (evt.clientY - 28) + "px";
+    },
+    hide() { tip.style.opacity = 0; }
+  };
+}
+
+const CAT_COLORS = {
+  "🛒 Alimentation / Courses":           "#e74c3c",
+  "🍕 Resto / Bar / Café":               "#e67e22",
+  "🏦 Banque / Finance / Investissement": "#f1c40f",
+  "🛍️ Bazar / Discount":                 "#2ecc71",
+  "🐾 Animaux":                           "#1abc9c",
+  "⛽ Transport / Carburant":             "#3498db",
+  "🏠 Maison / Logement":                "#9b59b6",
+  "🏋️ Sport / Loisirs":                  "#e91e63",
+  "👗 Mode / Shopping":                   "#00bcd4",
+  "💊 Santé / Pharmacie":                "#8bc34a",
+  "🛍️ Amazon / E-commerce":              "#ff9800",
+  "📺 Streaming / IA / Abonnement":      "#607d8b",
+  "💻 High-Tech":                         "#673ab7",
+  "🎮 Jeux vidéo":                        "#4caf50",
+  "🎭 Culture / Événements":             "#f06292",
+  "✈️ Vacances / Hébergement":           "#29b6f6",
+  "💐 Fleurs / Cadeaux":                 "#ec407a",
+  "💇 Beauté / Bien-être":               "#ab47bc",
+  "📦 Livraison / Colis":                "#78909c",
+  "👶 Enfants / Jouets":                  "#ffca28",
+  "🎓 Education / Formation":            "#26a69a",
+  "❓ Divers":                            "#aaaaaa",
+};
+
+function catColor(name) {
+  return CAT_COLORS[name] ?? "#aaaaaa";
+}
+
+let CATEGORIES = {};
+
+async function loadCategories() {
+  const res = await fetch("/api/categories/full");
+  if (!res.ok) throw new Error("Impossible de charger les catégories");
+  CATEGORIES = await res.json();
+}
+
+function getCategoryForMerchant(desc) {
+
+  if (!desc || !CATEGORIES) return "❓ Divers";
+
+  const descUpper = desc.toUpperCase().trim();
+  const km = CATEGORIES.known_merchants;
+
+  // 1. Lookup exact en majuscules
+  if (km[descUpper]) return km[descUpper];
+
+  // 2. Lookup partiel — la clé est contenue dans desc ou vice versa
+  for (const [key, cat] of Object.entries(km)) {
+    if (descUpper.includes(key) || key.includes(descUpper)) {
+      return cat;
+    }
+  }
+
+  // 3. Keywords par catégorie
+  const descLower = desc.toLowerCase();
+  for (const [cat, data] of Object.entries(CATEGORIES.categories)) {
+    if (cat === "❓ Divers") continue;
+
+    for (const kw of (data.keywords ?? [])) {
+      if (descLower.includes(kw.toLowerCase())) return cat;
+    }
+
+    for (const m of (data.merchants ?? [])) {
+      if (descLower.includes(m.toLowerCase())) return cat;
+    }
+  }
+
+  return "❓ Divers";
+}
+
+function renderBarH(selector, data, { colorFn, labelFn, fmt } = {}) {
+  const container = document.querySelector(selector);
+  if (!container) return;
+  container.innerHTML = "";
+
+  const margin = { top: 8, right: 80, bottom: 8, left: 160 };
+  const rowH = 18; // Hauteur réduite des barres
+  const totalH = data.length * rowH + margin.top + margin.bottom;
+  const w = container.clientWidth || 400;
+  const innerW = w - margin.left - margin.right;
+  const tip = d3Tooltip();
+
+  const x = d3.scaleLinear()
+    .domain([0, d3.max(data, d => d.value) || 1])
+    .range([0, innerW]);
+
+  const svg = d3.select(selector).append("svg")
+    .attr("width", "100%")
+    .attr("viewBox", `0 0 ${w} ${totalH}`)
+    .attr("preserveAspectRatio", "xMidYMid meet");
+
+  const g = svg.append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+  const rows = g.selectAll("g.row")
+    .data(data).enter().append("g")
+    .attr("class", "row")
+    .attr("transform", (d, i) => `translate(0,${i * rowH})`);
+
+  // Label gauche
+  rows.append("text")
+    .attr("x", -8).attr("y", rowH / 2 + 3)
+    .attr("text-anchor", "end")
+    .attr("fill", "#ccc").attr("font-size", 10)
+    .text(d => {
+      const txt = labelFn ? labelFn(d) : (d.label ?? "—");
+      return String(txt).substring(0, 22);
+    });
+
+  // Barre
+  rows.append("rect")
+    .attr("y", 3).attr("height", rowH - 6).attr("rx", 3)
+    .attr("fill", d => d.color ?? "#e05c5c")
+    .attr("width", d => Math.max(2, x(d.value)))
+    .on("mousemove", (evt, d) => {
+      tip.show(`<b>${labelFn ? labelFn(d) : d.label}</b><br>${fmt ? fmt(d.value) : d.value}`, evt);
+    })
+    .on("mouseleave", () => tip.hide());
+
+  // Valeur droite
+  rows.append("text")
+    .attr("x", d => Math.max(2, x(d.value)) + 6)
+    .attr("y", rowH / 2 + 3)
+    .attr("fill", "#aaa").attr("font-size", 9)
+    .text(d => fmt ? fmt(d.value) : fmtEur(d.value)); // ✅ valeur €, pas le label
+
+}
+
+
 async function render(rows) {
   _allRows = rows;
   destroyCharts();
@@ -1136,6 +1334,7 @@ async function render(rows) {
   });
 
   const months = [...new Set([...Object.keys(monthlyOut),...Object.keys(monthlyIn)])].sort();
+  
   const latestMonth = months.length ? months[months.length - 1] : "";
   const net = totalIn - totalOut;
 
@@ -1152,39 +1351,105 @@ async function render(rows) {
 
   const allDates = [...new Set([...Object.keys(dailyIn),...Object.keys(dailyOut)])].sort();
 
-  /* ── G1 : Mensuel avec clic ── */
-  const monthLabels = months;
-  _charts.monthly = new Chart($("c-monthly"), {
-    type:"bar",
-    data:{
-      labels: monthLabels,
-      datasets:[
-        { label:"Entrées (€)",  data: months.map(m=>monthlyIn[m]||0),
-          backgroundColor:C_IN,  order:2, yAxisID:"y" },
-        { label:"Sorties (€)",  data: months.map(m=>monthlyOut[m]||0),
-          backgroundColor:C_OUT, order:2, yAxisID:"y" },
-        { label:"Net (€)", data: months.map(m=>(monthlyIn[m]||0)-(monthlyOut[m]||0)),
-          type:"line", borderColor:C_NET, backgroundColor:"rgba(167,139,250,0.08)",
-          borderWidth:2, pointRadius:4, pointHoverRadius:6,
-          fill:false, tension:0.3, order:1, yAxisID:"y" }
-      ]
-    },
-    options: baseOpts({
-      onClick(evt, elements) {
-        if (!elements.length) return;
-        const idx = elements[0].index;
-        const mLabel = months[idx];
-        const mRows  = rowsByMonth[mLabel] || [];
-        openDrawer(mLabel, mRows);
-        document.querySelectorAll(".monthly-table tbody tr").forEach((tr,i) => {
-          tr.classList.toggle("active-month", i === idx);
-        });
-      },
-      plugins:{
-        legend:{ labels:{color:"#ccc",font:{size:11}} }
-      }
-    })
-  });
+  /* ── G1 : Mensuel D3 ── */
+
+  (function renderG1() {
+
+    const sel = "#g1-monthly";
+    const container = document.querySelector(sel);
+    if (!container) return;
+    container.innerHTML = "";
+    const BAR_W = 18, GROUP_GAP = 8, BAR_GAP = 2;
+    const groupW = BAR_W * 2 + BAR_GAP + GROUP_GAP;
+    const margin = { top: 20, right: 20, bottom: 40, left: 60 };
+    const totalW = Math.max(container.clientWidth, months.length * groupW + margin.left + margin.right + 40);
+    const { h } = d3ChartSize(sel);
+    const innerW = totalW - margin.left - margin.right;
+    const innerH = h - margin.top - margin.bottom;
+    const tip = d3Tooltip();
+
+    const svg = d3.select(sel).append("svg")
+      .attr("width", totalW).attr("height", h);
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x0 = d3.scaleBand().domain(months).range([0, innerW]).padding(0.25);
+    const allVals = months.flatMap(m => [monthlyIn[m]||0, monthlyOut[m]||0, Math.abs((monthlyIn[m]||0)-(monthlyOut[m]||0))]);
+    const y = d3.scaleLinear().domain([0, d3.max(allVals)*1.1]).range([innerH, 0]);
+
+    // Axes
+    g.append("g").attr("transform", `translate(0,${innerH})`)
+      .call(d3.axisBottom(x0).tickSize(0))
+      .selectAll("text").attr("fill","#aaa").attr("font-size",10)
+      .attr("transform","rotate(-30)").attr("text-anchor","end").attr("dy","0.5em");
+    g.select(".domain").remove();
+
+    g.append("g").call(d3.axisLeft(y).ticks(5)
+      .tickFormat(v => v >= 1000 ? (v/1000).toFixed(0)+"k€" : v+"€"))
+      .selectAll("text").attr("fill","#888").attr("font-size",10);
+    g.selectAll(".domain, .tick line").attr("stroke","#1e1e32");
+
+    // Grid
+    g.append("g").selectAll("line").data(y.ticks(5)).enter().append("line")
+      .attr("x1",0).attr("x2",innerW)
+      .attr("y1",d=>y(d)).attr("y2",d=>y(d))
+      .attr("stroke","#1e1e32").attr("stroke-width",1);
+
+    // Barres Entrées
+    g.selectAll(".bar-in").data(months).enter().append("rect")
+      .attr("class","bar-in")
+      .attr("x", m => x0(m))
+      .attr("y", m => y(monthlyIn[m]||0))
+      .attr("width", x0.bandwidth()/2 - 1)
+      .attr("height", m => innerH - y(monthlyIn[m]||0))
+      .attr("fill", C_IN).attr("rx", 3)
+      .on("mousemove", (evt, m) => tip.show(
+        `<b>${m}</b><br>Entrées : <span style="color:${C_IN}">${fmtEur(monthlyIn[m]||0)}</span>`, evt))
+      .on("mouseleave", () => tip.hide())
+      .on("click", (evt, m) => openDrawer(m, rowsByMonth[m]||[]));
+
+    // Barres Sorties
+    g.selectAll(".bar-out").data(months).enter().append("rect")
+      .attr("class","bar-out")
+      .attr("x", m => x0(m) + x0.bandwidth()/2 + 1)
+      .attr("y", m => y(monthlyOut[m]||0))
+      .attr("width", x0.bandwidth()/2 - 1)
+      .attr("height", m => innerH - y(monthlyOut[m]||0))
+      .attr("fill", C_OUT).attr("rx", 3)
+      .on("mousemove", (evt, m) => tip.show(
+        `<b>${m}</b><br>Sorties : <span style="color:${C_OUT}">${fmtEur(monthlyOut[m]||0)}</span>`, evt))
+      .on("mouseleave", () => tip.hide())
+      .on("click", (evt, m) => openDrawer(m, rowsByMonth[m]||[]));
+
+    // Ligne Net
+    const lineNet = d3.line()
+      .x(m => x0(m) + x0.bandwidth()/2)
+      .y(m => y(Math.max(0,(monthlyIn[m]||0)-(monthlyOut[m]||0))))
+      .curve(d3.curveCatmullRom);
+    g.append("path").datum(months)
+      .attr("fill","none").attr("stroke",C_NET)
+      .attr("stroke-width",2).attr("d",lineNet);
+
+    // Légende
+    const legend = [
+      { label:"Entrées", color: C_IN },
+      { label:"Sorties", color: C_OUT },
+      { label:"Net",     color: C_NET }
+    ];
+    const lg = svg.append("g").attr("transform",`translate(${margin.left},${h-6})`);
+    legend.forEach((l, i) => {
+      lg.append("rect").attr("x", i*90).attr("width",10).attr("height",10)
+        .attr("fill",l.color).attr("rx",2);
+      lg.append("text").attr("x", i*90+14).attr("y",9)
+        .attr("fill","#ccc").attr("font-size",10).text(l.label);
+    });
+
+    // Scroll si beaucoup de mois
+    container.style.overflowX = totalW > container.clientWidth ? "auto" : "";
+
+    requestAnimationFrame(() => {
+      container.scrollLeft = container.scrollWidth;
+    });
+  })();
 
   /* ── Tableau mensuel cliquable ── */
   const mTbody = $("tbl-monthly").querySelector("tbody");
@@ -1238,82 +1503,60 @@ async function render(rows) {
   );
 
   /* ── G3 : Top 20 marchands horizontal ── */
+  // Ajoute la couleur comme sur le 6m partout
   const descTotals = Object.entries(descSortiesMonthly)
-    .map(([desc,mData]) => ({ desc, total:Object.values(mData).reduce((s,v)=>s+v,0) }))
-    .sort((a,b)=>b.total-a.total).slice(0,20);
-
-  _charts.sorties = new Chart($("c-sorties-desc"), {
-    type:"bar",
-    data:{
-      labels: descTotals.map(d=>d.desc),
-      datasets:[{
-        label:"Total (€)",
-        data:  descTotals.map(d=>d.total),
-        backgroundColor: genColors(descTotals.length)
-      }]
-    },
-    options: baseOpts({
-      indexAxis:"y",
-      plugins:{ legend:{display:false} },
-      scales:{
-        x:{ ticks:{color:"#888"}, grid:{color:"#1e1e32"} },
-        y:{ ticks:{color:"#ccc",font:{size:10}}, grid:{color:"#1e1e32"} }
-      }
+    .map(([desc, mData]) => {
+      const cat = getCategoryForMerchant(desc);
+      const color = catColor(cat);
+      return {
+        label: desc,
+        value: Object.values(mData).reduce((s, v) => s + v, 0),
+        color,
+        _cat: cat
+      };
     })
-  });
+    .filter(d => d.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 20);
 
   const descTotalsMonth = Object.entries(merchantOutByMonth[latestMonth] || {})
-    .map(([desc,total]) => ({ desc, total }))
-    .sort((a,b)=>b.total-a.total).slice(0,20);
+    .map(([desc, total]) => {
+      const cat = getCategoryForMerchant(desc);
+      const color = catColor(cat);
+      return {
+        label: desc,
+        value: total,
+        color,
+        _cat: cat
+      };
+    })
+    .filter(d => d.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 20);
 
-  _charts.sortiesMonth = new Chart($("c-sorties-desc-month"), {
-    type:"bar",
-    data:{
-      labels: descTotalsMonth.map(d=>d.desc),
-      datasets:[{
-        label: latestMonth ? `Dernier mois (${latestMonth})` : "Dernier mois",
-        data:  descTotalsMonth.map(d=>d.total),
-        backgroundColor: genColors(Math.max(descTotalsMonth.length, 1))
-      }]
-    },
-    options: baseOpts({
-      indexAxis:"y",
-      plugins:{ legend:{display:false} },
-      scales:{
-        x:{ ticks:{color:"#888"}, grid:{color:"#1e1e32"} },
-        y:{ ticks:{color:"#ccc",font:{size:10}}, grid:{color:"#1e1e32"} }
-      }
+  // Utile pour le top 20 sur 6 mois : sum des sorties par marchand (desc), toutes catégories confondues
+  const descTotals6mMap = Object.fromEntries(
+    Object.entries(descSortiesMonthly).map(([desc, mData]) => [
+      desc,
+      last6Months.reduce((s, m) => s + (mData[m] || 0), 0)
+    ])
+  );
+  const descTotals6m = Object.entries(descSortiesMonthly)
+    .map(([desc, mData]) => {
+      const cat = getCategoryForMerchant(desc);
+      const color = catColor(cat);
+      const value = last6Months.reduce((s, m) => s + (mData[m] || 0), 0);
+
+      return { label: desc, value, color, _cat: cat };
     })
-  });
-  const descTotals6mMap = {};
-  last6Months.forEach(m => {
-    const block = merchantOutByMonth[m] || {};
-    Object.entries(block).forEach(([desc, total]) => {
-      descTotals6mMap[desc] = (descTotals6mMap[desc] || 0) + total;
-    });
-  });
-  const descTotals6m = Object.entries(descTotals6mMap)
-    .map(([desc,total]) => ({ desc, total }))
-    .sort((a,b)=>b.total-a.total).slice(0,20);
-  _charts.sorties6m = new Chart($("c-sorties-desc-6m"), {
-    type:"bar",
-    data:{
-      labels: descTotals6m.map(d=>d.desc),
-      datasets:[{
-        label: last6Months.length ? `6 derniers mois (${last6Months[0]} → ${last6Months[last6Months.length-1]})` : "6 derniers mois",
-        data:  descTotals6m.map(d=>d.total),
-        backgroundColor: genColors(Math.max(descTotals6m.length, 1))
-      }]
-    },
-    options: baseOpts({
-      indexAxis:"y",
-      plugins:{ legend:{display:false} },
-      scales:{
-        x:{ ticks:{color:"#888"}, grid:{color:"#1e1e32"} },
-        y:{ ticks:{color:"#ccc",font:{size:10}}, grid:{color:"#1e1e32"} }
-      }
-    })
-  });
+    .filter(d => d.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 20);
+
+  // Utilise la couleur dans tous les appels
+  renderBarH("#g3-sorties", descTotals, { fmt: fmtEur });
+  renderBarH("#g3-sorties-month", descTotalsMonth, { fmt: fmtEur });
+  renderBarH("#g3-sorties-6m", descTotals6m, { fmt: fmtEur });
 
   /* ── G3b : Cumul mensuel jour 1-31 (moyenne tous mois et 6 mois vs mois courant) ── */
   const dayLabels = Array.from({length:31}, (_,i)=>String(i+1));
@@ -1353,121 +1596,204 @@ async function render(rows) {
     avgCumIn6m.push(a6In); avgCumOut6m.push(a6Out);
     curCumIn.push(cIn);   curCumOut.push(cOut);
   }
-  _charts.cumulMonthDay = new Chart($("c-cumul-monthday"), {
-    type:"line",
-    data:{
-      labels: dayLabels,
-      datasets:[
-        // Sorties (totalité) - plus épaisses, couleur foncée
-        { 
-          label:"Sorties cumulées (tous mois)", 
-          data:avgCumOut, 
-          borderColor:"rgba(239,68,68,0.90)", 
-          backgroundColor:"rgba(239,68,68,0.06)", 
-          fill:false, 
-          tension:0.25, 
-          pointRadius:0, 
-          borderDash:[8,2], 
-          borderWidth:2.2, 
-          hidden: false
-        },
-        // Sorties (6 derniers mois) - plus claire
-        { 
-          label:"Sorties cumulées (6 mois récents)", 
-          data:avgCumOut6m, 
-          borderColor:"rgba(250,137,34,0.82)", 
-          backgroundColor:"rgba(251,191,36,0.10)", 
-          fill:false, 
-          tension:0.25, 
-          pointRadius:0, 
-          borderDash:[2,3], 
-          borderWidth:1.7, 
-          hidden: false
-        },
-        // Sorties courantes - ligne simple plus fine, accent vif
-        { 
-          label:`Sorties cumulées (${latestMonth || "mois courant"})`, 
-          data:curCumOut, 
-          borderColor:C_OUT, 
-          backgroundColor:"rgba(248,113,113,0.18)", 
-          fill:false, 
-          tension:0.25, 
-          pointRadius:0, 
-          borderWidth:2.5, 
-          hidden: false
-        },
-        // Entrées (totalité) - décoché par défaut
-        { 
-          label:"Entrées cumulées (tous mois)", 
-          data:avgCumIn, 
-          borderColor:"rgba(16,185,129,0.75)", 
-          backgroundColor:"rgba(16,185,129,0.08)", 
-          fill:false, 
-          tension:0.25, 
-          pointRadius:0, 
-          borderDash:[8,2], 
-          borderWidth:2.2,
-          hidden: true 
-        },
-        // Entrées (6 derniers mois) - décoché par défaut, teinte différente
-        { 
-          label:"Entrées cumulées (6 mois récents)", 
-          data:avgCumIn6m, 
-          borderColor:"rgba(56,189,248,0.80)", 
-          backgroundColor:"rgba(56,189,248,0.12)", 
-          fill:false, 
-          tension:0.25, 
-          pointRadius:0, 
-          borderDash:[2,3], 
-          borderWidth:1.7,
-          hidden: true
-        },
-        // Entrées courantes - décoché aussi (optionnel)
-        { 
-          label:`Entrées cumulées (${latestMonth || "mois courant"})`, 
-          data:curCumIn, 
-          borderColor:C_IN, 
-          backgroundColor:"rgba(74,222,128,0.14)", 
-          fill:false, 
-          tension:0.25, 
-          pointRadius:0, 
-          borderWidth:2.5,
-          hidden: true 
-        }
-      ]
-    },
-    options: baseOpts({
-      plugins: { 
-        legend: { display: true }
-      }
-    })
-  });
+  /* ── G4 : Cumul mensuel jour 1-31 D3 ── */
 
-  /* ── G4 : Cumul + écart ── */
-  let cumIn=0, cumOut=0;
-  const cumulIn  = allDates.map(d => { cumIn  += dailyIn[d]||0;  return cumIn; });
-  const cumulOut = allDates.map(d => { cumOut += dailyOut[d]||0; return cumOut; });
-  const ecart    = cumulIn.map((v,i) => v - cumulOut[i]);
+  (function renderG4() {
+    const sel = "#g4-cumul-monthday";
+    const container = document.querySelector(sel);
+    if (!container) return;
+    container.innerHTML = "";
 
-  _charts.cumul = new Chart($("c-cumul"), {
-    type:"line",
-    data:{
-      labels: allDates,
-      datasets:[
-        { label:"Entrées cumulées (€)", data:cumulIn,
-          borderColor:C_IN,  backgroundColor:"rgba(74,222,128,0.05)",
-          fill:true, tension:0.3, pointRadius:0, borderWidth:2 },
-        { label:"Sorties cumulées (€)", data:cumulOut,
-          borderColor:C_OUT, backgroundColor:"rgba(248,113,113,0.05)",
-          fill:true, tension:0.3, pointRadius:0, borderWidth:2 },
-        { label:"Écart (entrées − sorties) (€)", data:ecart,
-          borderColor:C_ECT, backgroundColor:"rgba(251,191,36,0.07)",
-          fill:true, tension:0.3, pointRadius:0, borderWidth:1.5,
-          borderDash:[5,3] }
-      ]
-    },
-    options: baseOpts()
-  });
+    const margin = { top: 20, right: 20, bottom: 30, left: 60 };
+    const { h } = d3ChartSize(sel);
+    const tip = d3Tooltip();
+
+    requestAnimationFrame(() => {
+      const w = container.getBoundingClientRect().width || 800;
+      const innerW = w - margin.left - margin.right;
+      const innerH = h - margin.top - margin.bottom;
+
+      const svg = d3.select(sel).append("svg")
+        .attr("width", "100%")
+        .attr("viewBox", `0 0 ${w} ${h}`)
+        .attr("preserveAspectRatio", "xMidYMid meet");
+      const g = svg.append("g").attr("transform",`translate(${margin.left},${margin.top})`);
+
+      const x = d3.scaleLinear().domain([1,31]).range([0,innerW]);
+
+      const allVals = [...avgCumOut,...avgCumOut6m,...curCumOut];
+      const y = d3.scaleLinear().domain([0,d3.max(allVals)*1.1||1]).range([innerH,0]);
+
+      g.append("g").attr("transform",`translate(0,${innerH})`)
+        .call(d3.axisBottom(x).ticks(10).tickFormat(d=>"J"+d))
+        .selectAll("text").attr("fill","#888").attr("font-size",9);
+
+      g.append("g").call(d3.axisLeft(y).ticks(5)
+        .tickFormat(v=>v>=1000?(v/1000).toFixed(0)+"k€":v+"€"))
+        .selectAll("text").attr("fill","#888").attr("font-size",9);
+
+      g.selectAll(".domain, .tick line").attr("stroke","#1e1e32");
+
+      g.append("g").selectAll("line").data(y.ticks(5)).enter().append("line")
+        .attr("x1",0).attr("x2",innerW).attr("y1",d=>y(d)).attr("y2",d=>y(d))
+        .attr("stroke","#1e1e32");
+
+      const mkLine = (data, color, dash, width) => {
+        const line = d3.line().x((_,i)=>x(i+1)).y(d=>y(d)).curve(d3.curveCatmullRom);
+        g.append("path").datum(data)
+          .attr("fill","none").attr("stroke",color)
+          .attr("stroke-width",width).attr("stroke-dasharray",dash||null)
+          .attr("d",line);
+      };
+
+      mkLine(avgCumOut,   "rgba(239,68,68,0.9)",  "8,2", 2.2);
+      mkLine(avgCumOut6m, "rgba(250,137,34,0.82)","2,3", 1.7);
+      mkLine(curCumOut,   C_OUT,                   null,  2.5);
+
+      const legs = [
+        { label:"Sorties (tous mois)", color:"rgba(239,68,68,0.9)",  dash:"8,2" },
+        { label:"Sorties (6 mois)",    color:"rgba(250,137,34,0.82)",dash:"2,3" },
+        { label:`Sorties (${latestMonth||"courant"})`, color:C_OUT,  dash:null  },
+      ];
+      const lg = svg.append("g").attr("transform",`translate(${margin.left},10)`);
+      legs.forEach((l,i) => {
+        lg.append("line").attr("x1",i*140).attr("x2",i*140+18).attr("y1",4).attr("y2",4)
+          .attr("stroke",l.color).attr("stroke-width",2)
+          .attr("stroke-dasharray",l.dash||null);
+        lg.append("text").attr("x",i*140+22).attr("y",8)
+          .attr("fill","#ccc").attr("font-size",9).text(l.label);
+      });
+
+      const vline = g.append("line").attr("y1",0).attr("y2",innerH)
+        .attr("stroke","#555").attr("stroke-width",1).attr("opacity",0);
+
+      svg.on("mousemove", (evt) => {
+        const [mx] = d3.pointer(evt, g.node());
+        const day = Math.round(x.invert(mx));
+        if (day < 1 || day > 31) return;
+        const idx = day - 1;
+        vline.attr("x1",x(day)).attr("x2",x(day)).attr("opacity",1);
+        tip.show(`<b>Jour ${day}</b><br>
+          Sorties moy. : ${fmtEur(avgCumOut[idx])}<br>
+          Sorties 6m : ${fmtEur(avgCumOut6m[idx])}<br>
+          Sorties ${latestMonth} : ${fmtEur(curCumOut[idx])}`, evt);
+      }).on("mouseleave",()=>{ vline.attr("opacity",0); tip.hide(); });
+    }); // fin requestAnimationFrame
+
+})();
+
+/* ── Cumul + écart ── */
+let cumIn=0, cumOut=0;
+const cumulIn  = allDates.map(d => { cumIn  += dailyIn[d]||0;  return cumIn; });
+const cumulOut = allDates.map(d => { cumOut += dailyOut[d]||0; return cumOut; });
+const ecart    = cumulIn.map((v,i) => v - cumulOut[i]);
+
+  /* ── G5 : Cumul global D3 ── */
+
+  (function renderG5() {
+
+    const sel = "#g5-cumul";
+
+    const container = document.querySelector(sel);
+
+    if (!container) return;
+
+    container.innerHTML = "";
+
+    const margin = { top: 20, right: 20, bottom: 50, left: 65 };
+
+    const w = Math.max(container.clientWidth, allDates.length * 2 + margin.left + margin.right);
+
+    const { h } = d3ChartSize(sel);
+
+    const innerW = w - margin.left - margin.right;
+
+    const innerH = h - margin.top - margin.bottom;
+
+    const tip = d3Tooltip();
+
+    const svg = d3.select(sel).append("svg").attr("width",w).attr("height",h);
+
+    const g = svg.append("g").attr("transform",`translate(${margin.left},${margin.top})`);
+
+    const x = d3.scalePoint().domain(allDates).range([0,innerW]);
+
+    const y = d3.scaleLinear()
+      .domain([0, d3.max([...cumulIn,...cumulOut])*1.05||1])
+      .range([innerH,0]);
+
+    // Axes
+    const tickEvery = Math.ceil(allDates.length / 8);
+
+    g.append("g").attr("transform",`translate(0,${innerH})`)
+      .call(d3.axisBottom(x).tickValues(allDates.filter((_,i)=>i%tickEvery===0)).tickSize(0))
+      .selectAll("text").attr("fill","#888").attr("font-size",9)
+      .attr("transform","rotate(-30)").attr("text-anchor","end");
+    g.append("g").call(d3.axisLeft(y).ticks(5)
+      .tickFormat(v=>v>=1000?(v/1000).toFixed(0)+"k€":v+"€"))
+      .selectAll("text").attr("fill","#888").attr("font-size",9);
+
+    g.selectAll(".domain, .tick line").attr("stroke","#1e1e32");
+
+    // Grid
+    g.append("g").selectAll("line").data(y.ticks(5)).enter().append("line")
+      .attr("x1",0).attr("x2",innerW).attr("y1",d=>y(d)).attr("y2",d=>y(d))
+      .attr("stroke","#1e1e32");
+
+    const area = (data, color) => d3.area()
+      .x((_,i)=>x(allDates[i])).y0(innerH).y1((_,i)=>y(data[i]))
+      .curve(d3.curveCatmullRom);
+    const line = (data) => d3.line()
+      .x((_,i)=>x(allDates[i])).y((_,i)=>y(data[i]))
+      .curve(d3.curveCatmullRom);
+
+    // Areas
+    g.append("path").datum(cumulIn)
+      .attr("fill","rgba(74,222,128,0.05)").attr("d",area(cumulIn,C_IN));
+    g.append("path").datum(cumulOut)
+      .attr("fill","rgba(248,113,113,0.05)").attr("d",area(cumulOut,C_OUT));
+    g.append("path").datum(ecart)
+      .attr("fill","rgba(251,191,36,0.07)").attr("d",area(ecart,C_ECT));
+
+    // Lines
+    [[cumulIn,C_IN,2],[cumulOut,C_OUT,2],[ecart,C_ECT,1.5]].forEach(([d,c,bw])=>{
+      g.append("path").datum(d).attr("fill","none")
+        .attr("stroke",c).attr("stroke-width",bw).attr("d",line(d));
+    });
+
+    // Légende
+    const legs = [
+      { label:"Entrées cumulées", color:C_IN },
+      { label:"Sorties cumulées", color:C_OUT },
+      { label:"Écart",            color:C_ECT }
+    ];
+    const lg = svg.append("g").attr("transform",`translate(${margin.left},8)`);
+    legs.forEach((l,i)=>{
+      lg.append("rect").attr("x",i*130).attr("width",10).attr("height",10)
+        .attr("fill",l.color).attr("rx",2);
+      lg.append("text").attr("x",i*130+14).attr("y",9)
+        .attr("fill","#ccc").attr("font-size",10).text(l.label);
+    });
+
+    // Tooltip
+    const vline = g.append("line").attr("y1",0).attr("y2",innerH)
+      .attr("stroke","#555").attr("opacity",0);
+    svg.on("mousemove",(evt)=>{
+      const [mx] = d3.pointer(evt,g.node());
+      const idx = Math.round(x.range()[1] === 0 ? 0 :
+        (mx / innerW) * (allDates.length-1));
+      const i = Math.max(0,Math.min(idx,allDates.length-1));
+      if (!allDates[i]) return;
+      vline.attr("x1",x(allDates[i])).attr("x2",x(allDates[i])).attr("opacity",1);
+      tip.show(`<b>${allDates[i]}</b><br>
+        Entrées : ${fmtEur(cumulIn[i])}<br>
+        Sorties : ${fmtEur(cumulOut[i])}<br>
+        Écart : <span style="color:${C_ECT}">${fmtEur(ecart[i])}</span>`, evt);
+    }).on("mouseleave",()=>{ vline.attr("opacity",0); tip.hide(); });
+
+    container.style.overflowX = w > container.clientWidth ? "auto" : "";
+
+  })();
 
   /* Affichage */
   $("charts-wrap").style.display         = "";
@@ -1520,6 +1846,7 @@ async function boot() {
 async function loadReleveFromServer() {
   $("upload-status").textContent = "⏳ Chargement de Releve.csv…";
   try {
+    await loadCategories();
     const resp = await apiFetch("/api/load_releve");
     if (resp.status === 404) {
       $("upload-status").textContent = "Aucun Releve.csv — importez un relevé PDF pour créer le fichier.";
