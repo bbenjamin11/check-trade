@@ -179,10 +179,9 @@ _MERCHANT_RULES: list[tuple[re.Pattern, str]] = [
 # ══════════════════════════════════════════════════════════════════════════════
 _CAT_CONFIG: dict | None = None
 
-CAT_FILE = Path(__file__).with_name("cathegorie.json")
-DEFAULT_PDF = Path(__file__).resolve().parent / "Relevé de compte trade republic 04_2023 - 04_2026.pdf"
-# > Chemin du CSV déplacé dans le dossier data :
 DATA_DIR = Path(__file__).resolve().parent / "data"
+CAT_FILE = DATA_DIR / "cathegorie.json"
+DEFAULT_PDF = Path(__file__).resolve().parent / "Relevé de compte trade republic 04_2023 - 04_2026.pdf"
 DEFAULT_CSV = DATA_DIR / "Releve.csv"
 
 def reload_category_config() -> None:
