@@ -424,6 +424,15 @@ def api_categorie():
         "csv": csv_path.name,
     })
 
+@app.route("/api/categories/full", methods=["GET"])
+@require_pin
+def api_categories_full():
+    try:
+        data = load_categories_json()
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    return jsonify(data)
+
 
 if __name__ == "__main__":
     logger.info("Serveur : http://127.0.0.1:5000")
