@@ -256,7 +256,12 @@ def _known_merchant_match(merchant_upper: str, key: str) -> bool:
     return ku in m or m in ku
 
 
-def categorize(merchant: str, raw_desc: str, type_: str) -> str:
+def categorize(
+    merchant: str,
+    raw_desc: str,
+    type_: str,
+    user_known_merchants: dict[str, str] | None = None,
+) -> str:
     """
     Catégorise via cathegorie.json : known_merchants (priorité),
     puis categories dans priority_order (mots-clés + marchands par catégorie).
@@ -274,6 +279,13 @@ def categorize(merchant: str, raw_desc: str, type_: str) -> str:
     haystack = f"{type_} {desc} {merchant}".lower()
     merch_u = merchant.upper().strip()
 
+    # Priorité 1 : préférences utilisateur (si présentes)
+    if user_known_merchants:
+        for key in sorted(user_known_merchants.keys(), key=len, reverse=True):
+            if _known_merchant_match(merch_u, key):
+                return user_known_merchants[key]
+
+    # Priorité 2 : mapping global partagé
     for key in sorted(known.keys(), key=len, reverse=True):
         if _known_merchant_match(merch_u, key):
             return known[key]
@@ -581,7 +593,10 @@ def fusionner_pdf_dans_releve(
     return {"added": added, "skipped": skipped, "total": len(existantes)}
 
 
-def reappliquer_categories_csv(chemin_csv: Path | None = None) -> int:
+def reappliquer_categories_csv(
+    chemin_csv: Path | None = None,
+    user_known_merchants: dict[str, str] | None = None,
+) -> int:
     """
     Recalcule MERCHANT et CATEGORY pour chaque ligne à partir de DESCRIPTION et TYPE
     (sans repasser par le PDF — préserve les fusions multi-PDF).
@@ -596,7 +611,12 @@ def reappliquer_categories_csv(chemin_csv: Path | None = None) -> int:
         desc = r[5]
         typ = r[1]
         merchant = normalize_merchant(desc)
-        category = categorize(merchant, desc, typ)
+        category = categorize(
+            merchant,
+            desc,
+            typ,
+            user_known_merchants=user_known_merchants,
+        )
         r[6] = merchant
         r[7] = category
         out_rows.append(r)

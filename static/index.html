@@ -64,22 +64,43 @@
       align-items: flex-end;
       gap: 0.35rem;
     }
-    #btn-upload-pdf {
-      background: linear-gradient(135deg, var(--accent2), var(--accent));
-      color: #fff;
-      border: none;
-      padding: 0.55rem 1.3rem;
-      border-radius: 8px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.2s, transform 0.1s;
+    .header-top-actions {
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
-    #btn-upload-pdf:hover { opacity: 0.88; transform: translateY(-1px); }
+    #btn-upload-pdf {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      font-size: 1.35rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    #btn-upload-pdf:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
     #btn-upload-pdf:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    #btn-logout {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      height: 42px;
+      padding: 0 0.95rem;
+      border-radius: 10px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      align-self: flex-end;
+      transition: border-color 0.2s, color 0.2s, transform 0.1s;
+    }
+    #btn-logout:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
     #upload-status {
       font-size: 0.78rem;
       color: var(--muted);
@@ -178,11 +199,19 @@
       .header-actions {
         align-items: stretch; /* pleine largeur */
       }
+      .header-top-actions {
+        width: 100%;
+      }
       
       #btn-upload-pdf {
-        width: 100%;
-        justify-content: center;
-        padding: 0.65rem 1rem;
+        width: 44px;
+        height: 44px;
+        flex: 0 0 auto;
+      }
+      #btn-logout {
+        height: 44px;
+        flex: 1;
+        align-self: stretch;
       }
       
       #upload-status {
@@ -519,6 +548,59 @@
       backdrop-filter: blur(10px);
     }
     .pin-overlay.is-open { display: flex; }
+    .upload-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 100001;
+      background: rgba(6, 6, 12, 0.78);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(10px);
+    }
+    .upload-modal.is-open { display: flex; }
+    .upload-modal-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.3rem;
+      width: min(420px, 92vw);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+    }
+    .upload-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.65rem;
+    }
+    .upload-modal-header h3 { color: var(--accent); font-size: 1rem; }
+    .upload-modal-close {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .upload-modal-close:hover { border-color: var(--accent); color: var(--accent); }
+    .upload-modal-text {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.4;
+      margin-bottom: 0.9rem;
+    }
+    #btn-pick-pdf {
+      width: 100%;
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 0.7rem 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #btn-pick-pdf:hover { opacity: 0.9; }
     .pin-card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -536,6 +618,7 @@
       line-height: 1.45;
     }
     .pin-card .pin-hint code { font-size: 0.72rem; background: var(--surface2); padding: 0.1rem 0.35rem; border-radius: 4px; }
+    .pin-card input[type="text"],
     .pin-card input[type="password"] {
       width: 100%;
       padding: 0.65rem 0.9rem;
@@ -548,6 +631,8 @@
       margin-bottom: 0.5rem;
       outline: none;
     }
+    .pin-card input[type="text"] { letter-spacing: normal; margin-bottom: 0.7rem; }
+    .pin-card input[type="text"]:focus,
     .pin-card input[type="password"]:focus { border-color: var(--accent); }
     #pin-error { color: var(--neg); font-size: 0.82rem; margin-bottom: 0.6rem; min-height: 1.2em; }
     #pin-submit {
@@ -603,10 +688,24 @@
     <div id="pin-checking">Vérification du code d’accès…</div>
     <div id="pin-form-wrap" style="display:none">
       <h2 id="pin-title">Code d’accès</h2>
+      <input type="text" id="pin-user-input" placeholder="Utilisateur (ex: alice)" autocomplete="username" />
       <input type="password" id="pin-input" autocomplete="current-password" />
       <p id="pin-error"></p>
       <button type="button" id="pin-submit">Valider</button>
     </div>
+  </div>
+</div>
+
+<div id="upload-modal" class="upload-modal" aria-hidden="true">
+  <div class="upload-modal-card" role="dialog" aria-labelledby="upload-modal-title">
+    <div class="upload-modal-header">
+      <h3 id="upload-modal-title">Ajouter un PDF</h3>
+      <button type="button" id="upload-modal-close" class="upload-modal-close">✕</button>
+    </div>
+    <p class="upload-modal-text">
+      Sélectionnez un relevé PDF. Les transactions seront fusionnées dans votre Releve.csv sans doublons.
+    </p>
+    <button type="button" id="btn-pick-pdf">Choisir un fichier PDF</button>
   </div>
 </div>
 
@@ -615,9 +714,10 @@
   <h1>📊 Trade Republic <span>— Analyse</span></h1>
   <div class="header-actions">
     <input type="file" id="pdf-releve-input" accept=".pdf,application/pdf" hidden/>
-    <button type="button" id="btn-upload-pdf" title="Parse le PDF et fusionne dans Releve.csv (sans doublons)">
-      📄 Ajouter relevé PDF
-    </button>
+    <div class="header-top-actions">
+      <button type="button" id="btn-upload-pdf" title="Ajouter un relevé PDF">+</button>
+      <button type="button" id="btn-logout" title="Fermer la session">🚪 Logout</button>
+    </div>
     <p id="upload-status">Chargement de Releve.csv…</p>
   </div>
 </header>
@@ -919,7 +1019,11 @@ function closeDrawer() {
 
 $("drawer-close").addEventListener("click", closeDrawer);
 $("drawer-backdrop").addEventListener("click", closeDrawer);
-document.addEventListener("keydown", e => { if(e.key==="Escape") closeDrawer(); });
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  closeDrawer();
+  closeUploadModal();
+});
 
 /* ═══════════════════════════════════════════
    D3 — DONUT
@@ -1680,40 +1784,38 @@ async function render(rows) {
       }).on("mouseleave",()=>{ vline.attr("opacity",0); tip.hide(); });
     }); // fin requestAnimationFrame
 
-})();
+  })();
 
-/* ── Cumul + écart ── */
-let cumIn=0, cumOut=0;
-const cumulIn  = allDates.map(d => { cumIn  += dailyIn[d]||0;  return cumIn; });
-const cumulOut = allDates.map(d => { cumOut += dailyOut[d]||0; return cumOut; });
-const ecart    = cumulIn.map((v,i) => v - cumulOut[i]);
+  /* ── Cumul + écart ── */
+  let cumIn=0, cumOut=0;
+  const cumulIn  = allDates.map(d => { cumIn  += dailyIn[d]||0;  return cumIn; });
+  const cumulOut = allDates.map(d => { cumOut += dailyOut[d]||0; return cumOut; });
+  const ecart    = cumulIn.map((v,i) => v - cumulOut[i]);
 
   /* ── G5 : Cumul global D3 ── */
 
   (function renderG5() {
-
     const sel = "#g5-cumul";
-
     const container = document.querySelector(sel);
-
     if (!container) return;
-
     container.innerHTML = "";
 
     const margin = { top: 20, right: 20, bottom: 50, left: 65 };
-
-    const w = Math.max(container.clientWidth, allDates.length * 2 + margin.left + margin.right);
-
     const { h } = d3ChartSize(sel);
-
+    
+    // === Détermination de la largeur comme dans renderG4 ===
+    // On prend la largeur du container, sinon fallback à 800 (comme G4)
+    const w = container.getBoundingClientRect().width || 800;
     const innerW = w - margin.left - margin.right;
-
     const innerH = h - margin.top - margin.bottom;
 
     const tip = d3Tooltip();
 
-    const svg = d3.select(sel).append("svg").attr("width",w).attr("height",h);
-
+    // SVG responsive comme G4
+    const svg = d3.select(sel).append("svg")
+      .attr("width", "100%")
+      .attr("viewBox", `0 0 ${w} ${h}`)
+      .attr("preserveAspectRatio", "xMidYMid meet");
     const g = svg.append("g").attr("transform",`translate(${margin.left},${margin.top})`);
 
     const x = d3.scalePoint().domain(allDates).range([0,innerW]);
@@ -1813,7 +1915,7 @@ function showPinOverlay(mode) {
   $("pin-checking").style.display = mode === "checking" ? "block" : "none";
   $("pin-form-wrap").style.display = mode === "form" ? "block" : "none";
   $("pin-error").textContent = "";
-  if (mode === "form") setTimeout(() => $("pin-input").focus(), 50);
+  if (mode === "form") setTimeout(() => $("pin-user-input").focus(), 50);
 }
 
 function hidePinOverlay() {
@@ -1841,6 +1943,18 @@ async function boot() {
     $("pin-checking").style.display = "block";
     $("pin-checking").textContent = `Impossible de joindre le serveur : ${e.message}`;
   }
+}
+
+async function logout() {
+  try {
+    await apiFetch("/api/auth/logout", { method: "POST" });
+  } catch (_) {
+    // Même en cas d'erreur réseau, on force l'UI en mode non authentifié.
+  }
+  $("pin-input").value = "";
+  $("pin-user-input").value = "";
+  showPinOverlay("form");
+  $("upload-status").textContent = "Session fermée.";
 }
 
 async function loadReleveFromServer() {
@@ -1884,11 +1998,27 @@ async function loadReleveFromServer() {
   }
 }
 
-$("btn-upload-pdf").addEventListener("click", () => $("pdf-releve-input").click());
+function openUploadModal() {
+  $("upload-modal").classList.add("is-open");
+  $("upload-modal").setAttribute("aria-hidden", "false");
+}
+
+function closeUploadModal() {
+  $("upload-modal").classList.remove("is-open");
+  $("upload-modal").setAttribute("aria-hidden", "true");
+}
+
+$("btn-upload-pdf").addEventListener("click", openUploadModal);
+$("btn-pick-pdf").addEventListener("click", () => $("pdf-releve-input").click());
+$("upload-modal-close").addEventListener("click", closeUploadModal);
+$("upload-modal").addEventListener("click", (e) => {
+  if (e.target.id === "upload-modal") closeUploadModal();
+});
 
 $("pdf-releve-input").addEventListener("change", async (e) => {
   const file = e.target.files && e.target.files[0];
   e.target.value = "";
+  closeUploadModal();
   if (!file) return;
   if (!file.name.toLowerCase().endsWith(".pdf")) {
     $("upload-status").textContent = "❌ Choisissez un fichier PDF.";
@@ -1924,7 +2054,10 @@ $("pin-submit").addEventListener("click", async () => {
     const r = await apiFetch("/api/auth/pin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pin: $("pin-input").value })
+      body: JSON.stringify({
+        user: $("pin-user-input").value,
+        pin: $("pin-input").value
+      })
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) {
@@ -1944,6 +2077,9 @@ $("pin-submit").addEventListener("click", async () => {
 $("pin-input").addEventListener("keydown", e => {
   if (e.key === "Enter") $("pin-submit").click();
 });
+$("pin-user-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") $("pin-input").focus();
+});
 
 document.addEventListener("DOMContentLoaded", () => {
   const mini = $("monthly-mini-card");
@@ -1954,6 +2090,7 @@ document.addEventListener("DOMContentLoaded", () => {
       mini.classList.toggle("expanded");
     });
   }
+  $("btn-logout").addEventListener("click", logout);
   boot();
 });
 </script>

@@ -7,11 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ARG PIN_APP
 ARG FLASK_SECRET_KEY
-
-ENV PIN_APP=$PIN_APP
-ENV FLASK_SECRET_KEY=$FLASK_SECRET_KEY
+ENV FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
 
 VOLUME ["/app/data"]
 

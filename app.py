@@ -6,7 +6,8 @@ Détection anti-bot : User-Agent, rate-limit fréquence, honeypot field.
 
 from __future__ import annotations
 
-import hmac
+import base64
+import json
 import os
 import re
 import tempfile
@@ -16,6 +17,9 @@ from pathlib import Path
 import logging
 
 from dotenv import load_dotenv
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from flask import Flask, Response, jsonify, request, send_from_directory, session
 
 from parser import (
@@ -86,6 +90,13 @@ _login_attempts: dict[str, dict] = {}
 _request_log: dict[str, list[float]] = {}
 RATE_LIMIT_WINDOW: float = 10.0   # secondes
 RATE_LIMIT_MAX: int = 20          # requêtes max par fenêtre (toutes routes confondues)
+
+# Secrets de session en mémoire (ne jamais sérialiser en cookie/session)
+_session_auth: dict[str, dict[str, str]] = {}
+
+# Marqueur de format du CSV chiffré
+ENC_MAGIC = b"CTENC1\n"
+PBKDF2_ITERS = 390_000
 
 
 # ---------------------------------------------------------------------------
@@ -198,16 +209,123 @@ def _record_success(ip: str) -> None:
 # PIN helpers
 # ---------------------------------------------------------------------------
 
-def _pin_app_value() -> str:
-    return (os.getenv("PIN_APP") or "").strip()
+def _derive_pin_key(pin: str, salt: bytes) -> bytes:
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=PBKDF2_ITERS,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(pin.encode("utf-8")))
+
+
+def _encrypt_csv_text(csv_text: str, pin: str) -> bytes:
+    salt = os.urandom(16)
+    key = _derive_pin_key(pin, salt)
+    token = Fernet(key).encrypt(csv_text.encode("utf-8"))
+    return ENC_MAGIC + base64.urlsafe_b64encode(salt) + b"\n" + token
+
+
+def _decrypt_csv_bytes(blob: bytes, pin: str) -> str:
+    if not blob.startswith(ENC_MAGIC):
+        return blob.decode("utf-8-sig")
+    lines = blob.split(b"\n", 2)
+    if len(lines) < 3:
+        raise ValueError("Format chiffré invalide.")
+    salt = base64.urlsafe_b64decode(lines[1])
+    token = lines[2]
+    key = _derive_pin_key(pin, salt)
+    try:
+        plain = Fernet(key).decrypt(token)
+    except InvalidToken as e:
+        raise ValueError("PIN incorrect.") from e
+    return plain.decode("utf-8")
+
+
+def _sanitize_user_id(raw_user: str) -> str:
+    user = (raw_user or "").strip().lower()
+    user = re.sub(r"[^a-z0-9._-]+", "_", user)
+    user = user.strip("._-")
+    return user
+
+
+def _store_session_auth(user_id: str, pin: str) -> None:
+    token = os.urandom(18).hex()
+    _session_auth[token] = {"user_id": user_id, "pin": pin}
+    session["auth_token"] = token
+
+
+def _get_session_pin() -> str | None:
+    token = session.get("auth_token")
+    if not token:
+        return None
+    auth = _session_auth.get(token)
+    if not auth:
+        return None
+    return auth.get("pin")
+
+
+def _get_session_user() -> str | None:
+    token = session.get("auth_token")
+    if not token:
+        return None
+    auth = _session_auth.get(token)
+    if not auth:
+        return None
+    return auth.get("user_id")
 
 
 def _pin_required() -> bool:
-    return bool(_pin_app_value())
+    # Le PIN sert de clé de chiffrement du CSV : toujours requis pour accéder aux routes protégées.
+    return True
 
 
-def _session_pin_ok() -> bool:
-    return bool(session.get("app_pin_ok"))
+def _releve_path(user_id: str) -> Path:
+    return DATA_DIR / "users" / user_id / "Releve.csv"
+
+
+def _user_prefs_path(user_id: str) -> Path:
+    return DATA_DIR / "users" / user_id / "known_merchants.json"
+
+
+def _merchant_key(merchant: str) -> str:
+    return merchant.strip().upper()
+
+
+def _load_user_known_merchants(user_id: str) -> dict[str, str]:
+    path = _user_prefs_path(user_id)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, str] = {}
+    for k, v in data.items():
+        if isinstance(k, str) and isinstance(v, str):
+            kk = _merchant_key(k)
+            if kk:
+                out[kk] = v.strip()
+    return out
+
+
+def _save_user_known_merchants(user_id: str, mapping: dict[str, str]) -> None:
+    path = _user_prefs_path(user_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ordered = dict(sorted(mapping.items(), key=lambda kv: kv[0]))
+    path.write_text(json.dumps(ordered, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _read_releve_csv_text(path: Path, pin: str) -> str:
+    data = path.read_bytes()
+    return _decrypt_csv_bytes(data, pin)
+
+
+def _write_releve_csv_text(path: Path, csv_text: str, pin: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_encrypt_csv_text(csv_text, pin))
 
 
 def require_pin(f):
@@ -215,7 +333,7 @@ def require_pin(f):
     def wrapped(*args, **kwargs):
         if not _pin_required():
             return f(*args, **kwargs)
-        if not _session_pin_ok():
+        if not _get_session_pin() or not _get_session_user():
             return jsonify({"error": "Authentification requise.", "auth_required": True}), 401
         return f(*args, **kwargs)
     return wrapped
@@ -233,16 +351,20 @@ def index():
 @app.route("/api/auth/status", methods=["GET"])
 def api_auth_status():
     need = _pin_required()
-    ok = (not need) or _session_pin_ok()
+    ok = (not need) or (bool(_get_session_pin()) and bool(_get_session_user()))
     return jsonify({"pin_required": need, "authenticated": ok})
 
 
 @app.route("/api/auth/pin", methods=["POST"])
 @bot_guard
 def api_auth_pin():
-    expected = _pin_app_value()
-    if not expected:
-        return jsonify({"ok": True, "message": "PIN non configuré."})
+    body = request.get_json(silent=True) or {}
+    submitted = str(body.get("pin") or "").strip()
+    submitted_user = _sanitize_user_id(str(body.get("user") or ""))
+    if not submitted_user:
+        return jsonify({"error": "Identifiant utilisateur requis."}), 400
+    if not submitted:
+        return jsonify({"error": "PIN requis."}), 400
 
     ip = _get_client_ip()
 
@@ -263,8 +385,6 @@ def api_auth_pin():
             "retry_after": MIN_DELAY_BETWEEN_ATTEMPTS,
         }), 429
 
-    body = request.get_json(silent=True) or {}
-
     # ── Honeypot : champ « website » doit rester VIDE ───────────────────────
     # Un bot qui remplit tous les champs sera piégé ici.
     if body.get("website"):
@@ -272,9 +392,24 @@ def api_auth_pin():
         # Fausse réponse positive pour ne pas alerter le bot
         return jsonify({"ok": True}), 200
 
-    submitted = str(body.get("pin") or "").encode("utf-8")
-    expected_bytes = expected.encode("utf-8")
-    pin_ok = len(submitted) == len(expected_bytes) and hmac.compare_digest(submitted, expected_bytes)
+    releve = _releve_path(submitted_user)
+    legacy_releve = DATA_DIR / "Releve.csv"
+    pin_ok = True
+    try:
+        if not releve.exists() and legacy_releve.exists():
+            releve.parent.mkdir(parents=True, exist_ok=True)
+            legacy_releve.replace(releve)
+            logger.info("📦 Migration ancien Releve.csv vers utilisateur %s.", submitted_user)
+        if releve.exists():
+            data = releve.read_bytes()
+            if data.startswith(ENC_MAGIC):
+                _decrypt_csv_bytes(data, submitted)
+            else:
+                # Migration transparente : premier PIN saisi devient la clé de chiffrement.
+                _write_releve_csv_text(releve, data.decode("utf-8-sig"), submitted)
+                logger.info("🔐 Migration Releve.csv en mode chiffré pour utilisateur %s.", submitted_user)
+    except Exception:
+        pin_ok = False
 
     if not pin_ok:
         remaining_attempts = _record_failure(ip)
@@ -290,7 +425,16 @@ def api_auth_pin():
         }), 403
 
     _record_success(ip)
-    session["app_pin_ok"] = True
+    _store_session_auth(submitted_user, submitted)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_auth_logout():
+    token = session.pop("auth_token", None)
+    if token:
+        _session_auth.pop(token, None)
+    session.clear()
     return jsonify({"ok": True})
 
 
@@ -341,10 +485,30 @@ def api_parse():
 @app.route("/api/load_releve", methods=["GET"])
 @require_pin
 def load_releve():
-    releve_csv = DATA_DIR / "Releve.csv"
+    user_id = _get_session_user()
+    if not user_id:
+        return jsonify({"error": "Authentification requise.", "auth_required": True}), 401
+    releve_csv = _releve_path(user_id)
     if not releve_csv.exists():
         return jsonify({"error": "Fichier Releve.csv introuvable"}), 404
-    return send_from_directory(directory=str(DATA_DIR), path="Releve.csv", mimetype="text/csv; charset=utf-8")
+    pin = _get_session_pin()
+    if not pin:
+        return jsonify({"error": "Authentification requise.", "auth_required": True}), 401
+    fd_csv, path_csv = tempfile.mkstemp(suffix=".csv")
+    os.close(fd_csv)
+    tmp_csv = Path(path_csv)
+    try:
+        csv_text = _read_releve_csv_text(releve_csv, pin)
+        tmp_csv.write_text(csv_text, encoding="utf-8")
+        user_known = _load_user_known_merchants(user_id)
+        reappliquer_categories_csv(tmp_csv, user_known_merchants=user_known)
+        csv_text = tmp_csv.read_text(encoding="utf-8")
+        _write_releve_csv_text(releve_csv, csv_text, pin)
+    except Exception:
+        return jsonify({"error": "Impossible de déchiffrer Releve.csv avec ce PIN."}), 403
+    finally:
+        tmp_csv.unlink(missing_ok=True)
+    return Response(csv_text, mimetype="text/csv; charset=utf-8")
 
 
 @app.route("/api/releve/pdf", methods=["POST"])
@@ -367,13 +531,31 @@ def api_releve_pdf():
     fd, path = tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
     tmp = Path(path)
+    pin = _get_session_pin()
+    user_id = _get_session_user()
+    if not pin:
+        return jsonify({"error": "Authentification requise.", "auth_required": True}), 401
+    if not user_id:
+        return jsonify({"error": "Authentification requise.", "auth_required": True}), 401
+    fd_csv, path_csv = tempfile.mkstemp(suffix=".csv")
+    os.close(fd_csv)
+    tmp_csv = Path(path_csv)
     try:
         fichier.save(tmp)
-        stats = fusionner_pdf_dans_releve(tmp, DATA_DIR / "Releve.csv")
+        releve = _releve_path(user_id)
+        user_known = _load_user_known_merchants(user_id)
+        if releve.exists():
+            tmp_csv.write_text(_read_releve_csv_text(releve, pin), encoding="utf-8")
+        else:
+            tmp_csv.unlink(missing_ok=True)
+        stats = fusionner_pdf_dans_releve(tmp, tmp_csv)
+        reappliquer_categories_csv(tmp_csv, user_known_merchants=user_known)
+        _write_releve_csv_text(releve, tmp_csv.read_text(encoding="utf-8"), pin)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
         tmp.unlink(missing_ok=True)
+        tmp_csv.unlink(missing_ok=True)
     return jsonify({
         "ok": True,
         "added": stats["added"],
@@ -404,16 +586,38 @@ def api_categorie():
     category = (body.get("category") or "").strip()
     if not merchant or not category:
         return jsonify({"error": "Champs « merchant » et « category » requis."}), 400
-    csv_path = DATA_DIR / "Releve.csv"
+    user_id = _get_session_user()
+    if not user_id:
+        return jsonify({"error": "Authentification requise.", "auth_required": True}), 401
+    csv_path = _releve_path(user_id)
     if not csv_path.is_file():
         return jsonify({"error": "Releve.csv introuvable — importez d'abord un relevé PDF."}), 404
+    pin = _get_session_pin()
+    if not pin:
+        return jsonify({"error": "Authentification requise.", "auth_required": True}), 401
+    fd_csv, path_csv = tempfile.mkstemp(suffix=".csv")
+    os.close(fd_csv)
+    tmp_csv = Path(path_csv)
     try:
+        tmp_csv.write_text(_read_releve_csv_text(csv_path, pin), encoding="utf-8")
+        # Règle globale partagée (profite à tous les utilisateurs sans override perso)
         add_known_merchant_category(merchant, category)
-        n = reappliquer_categories_csv(csv_path)
+        # Override local utilisateur (protège ses préférences futures)
+        user_known = _load_user_known_merchants(user_id)
+        mk = _merchant_key(merchant)
+        if mk:
+            user_known[mk] = category
+            _save_user_known_merchants(user_id, user_known)
+        n = reappliquer_categories_csv(tmp_csv, user_known_merchants=user_known)
+        _write_releve_csv_text(csv_path, tmp_csv.read_text(encoding="utf-8"), pin)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except FileNotFoundError as e:
         return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        tmp_csv.unlink(missing_ok=True)
     return jsonify({
         "ok": True,
         "message": (
