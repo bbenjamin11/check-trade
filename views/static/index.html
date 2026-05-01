@@ -87,6 +87,67 @@
     }
     #btn-upload-pdf:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
     #btn-upload-pdf:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    #btn-tr-sync {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      height: 42px;
+      padding: 0 0.95rem;
+      border-radius: 10px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, transform 0.1s;
+    }
+    #btn-tr-sync:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+    #btn-tr-sync:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    #tr-sync-modal {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.55);
+      display: none; align-items: center; justify-content: center;
+    }
+    #tr-sync-modal.is-open { display: flex; }
+    #tr-sync-modal .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.6rem 1.8rem;
+      width: min(420px, 92vw);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+    }
+    #tr-sync-modal h3 { margin: 0 0 0.4rem 0; font-size: 1.1rem; }
+    #tr-sync-modal .warn {
+      font-size: 0.78rem; color: var(--muted);
+      background: rgba(255, 200, 0, 0.06);
+      border: 1px solid rgba(255, 200, 0, 0.2);
+      padding: 0.5rem 0.7rem; border-radius: 8px;
+      margin: 0.5rem 0 1rem;
+      line-height: 1.45;
+    }
+    #tr-sync-modal label { display: block; font-size: 0.78rem; color: var(--muted); margin: 0.7rem 0 0.25rem; }
+    #tr-sync-modal input {
+      width: 100%; box-sizing: border-box;
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.55rem 0.7rem; font-size: 0.95rem;
+    }
+    #tr-sync-modal input:focus { outline: none; border-color: var(--accent); }
+    #tr-sync-modal .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    #tr-sync-modal button.primary {
+      flex: 1;
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      color: #fff; border: none; border-radius: 10px;
+      padding: 0.7rem; font-weight: 600; cursor: pointer;
+    }
+    #tr-sync-modal button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    #tr-sync-modal button.secondary {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 0.7rem 1rem; cursor: pointer;
+    }
+    #tr-sync-status { font-size: 0.82rem; margin-top: 0.6rem; min-height: 1em; }
+    #tr-sync-status.ok { color: #4ade80; }
+    #tr-sync-status.err { color: #f87171; }
     #btn-logout {
       background: var(--surface2);
       color: var(--text);
@@ -669,8 +730,7 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.09);
       border: 1.5px solid;
       max-width: 590px;
-      transition: opacity 0.4s;
- 
+      transition: opacity 0.2s;
     }
     .alert-log-info  { background: rgba(56,189,248,0.10); border-color: var(--info); color: var(--info); }
     .alert-log-warn  { background: rgba(251,191,36,0.10); border-color: var(--warn); color: var(--warn); }
@@ -710,6 +770,69 @@
   </div>
 </div>
 
+<!-- ── Modal Refresh Trade Republic (2 étapes) ── -->
+<!-- Aucun cred n'est stocké. Instance pytr en RAM serveur (TTL 5min) entre les 2 étapes. -->
+<div id="tr-sync-modal" aria-hidden="true">
+  <div class="card" role="dialog" aria-labelledby="tr-sync-title">
+    <h3 id="tr-sync-title">↻ Refresh depuis Trade Republic</h3>
+
+    <!-- ÉTAPE 1 : phone + PIN -->
+    <div id="tr-sync-step-1">
+      <p class="warn">
+        Tes identifiants <strong>ne sont jamais stockés sur disque</strong>.
+        Trade Republic va t'envoyer un <strong>code de validation sur ton app mobile</strong>
+        que tu saisiras à l'étape suivante. Cette synchro va te déconnecter de l'app TR.
+      </p>
+      <form id="tr-sync-form-1" autocomplete="off" novalidate>
+        <label for="tr-sync-phone">Téléphone (format international)</label>
+        <input
+          type="tel" id="tr-sync-phone" name="tr-sync-phone"
+          placeholder="+33612345678"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          required pattern="^\+\d{9,15}$" />
+
+        <label for="tr-sync-pin">PIN Trade Republic (4 chiffres)</label>
+        <input
+          type="password" id="tr-sync-pin" name="tr-sync-pin"
+          inputmode="numeric"
+          placeholder="••••"
+          autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"
+          required pattern="^\d{4}$" maxlength="4" />
+
+        <div class="actions">
+          <button type="button" id="tr-sync-cancel-1" class="secondary">Annuler</button>
+          <button type="submit" id="tr-sync-submit-1" class="primary">Continuer →</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ÉTAPE 2 : code reçu sur l'app TR mobile -->
+    <div id="tr-sync-step-2" style="display:none">
+      <p class="warn">
+        Un code a été envoyé à ton <strong>app Trade Republic mobile</strong>.
+        Saisis-le ci-dessous. Le code expire dans <span id="tr-sync-countdown">…</span>.
+      </p>
+      <p id="tr-sync-mode-hint" style="font-size:0.78rem; color:var(--muted); margin:0 0 0.6rem 0;"></p>
+      <form id="tr-sync-form-2" autocomplete="off" novalidate>
+        <label for="tr-sync-code">Code de validation</label>
+        <input
+          type="text" id="tr-sync-code" name="tr-sync-code"
+          inputmode="numeric"
+          placeholder="1234"
+          autocomplete="one-time-code" autocorrect="off" autocapitalize="off" spellcheck="false"
+          required pattern="^\d{4,8}$" maxlength="8" />
+
+        <div class="actions">
+          <button type="button" id="tr-sync-cancel-2" class="secondary">Annuler</button>
+          <button type="submit" id="tr-sync-submit-2" class="primary">Synchroniser</button>
+        </div>
+      </form>
+    </div>
+
+    <p id="tr-sync-status"></p>
+  </div>
+</div>
+
 <!-- ── Header ── -->
 <header>
   <h1>📊 Trade Republic <span>— Analyse</span></h1>
@@ -717,6 +840,7 @@
     <input type="file" id="pdf-releve-input" accept=".pdf,application/pdf" hidden/>
     <div class="header-top-actions">
       <button type="button" id="btn-upload-pdf" title="Ajouter un relevé PDF">+</button>
+      <button type="button" id="btn-tr-sync" title="Synchroniser depuis Trade Republic (rien n'est stocké)">↻ Refresh TR</button>
       <button type="button" id="btn-logout" title="Fermer la session">🚪 Logout</button>
     </div>
     <p id="upload-status">Chargement de Releve.csv…</p>
@@ -2044,6 +2168,211 @@ $("pdf-releve-input").addEventListener("change", async (e) => {
     $("upload-status").textContent = `❌ ${err.message}`;
   } finally {
     btn.disabled = false;
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Refresh Trade Republic — flow 2 étapes (initiate → code mobile → verify)
+// ─────────────────────────────────────────────────────────────────────────────
+// Aucun credential stocké côté client.
+// Le session_id ne vit que pendant l'ouverture de la modal (entre étape 1 et 2).
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _trSyncState = {
+  sessionId: null,
+  countdownTimer: null,
+};
+
+function trSyncResetState() {
+  if (_trSyncState.countdownTimer) {
+    clearInterval(_trSyncState.countdownTimer);
+  }
+  _trSyncState = { sessionId: null, countdownTimer: null };
+}
+
+function trSyncShowStep(n) {
+  $("tr-sync-step-1").style.display = n === 1 ? "" : "none";
+  $("tr-sync-step-2").style.display = n === 2 ? "" : "none";
+}
+
+function trSyncSetStatus(msg, kind) {
+  const s = $("tr-sync-status");
+  s.textContent = msg || "";
+  s.className = kind || "";
+}
+
+function trSyncStartCountdown(seconds) {
+  const elt = $("tr-sync-countdown");
+  let remaining = seconds;
+  const render = () => {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    elt.textContent = m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
+  };
+  render();
+  if (_trSyncState.countdownTimer) clearInterval(_trSyncState.countdownTimer);
+  _trSyncState.countdownTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(_trSyncState.countdownTimer);
+      elt.textContent = "expiré";
+      trSyncSetStatus("⏱ Code expiré. Annule et recommence.", "err");
+    } else {
+      render();
+    }
+  }, 1000);
+}
+
+function openTrSyncModal() {
+  const m = $("tr-sync-modal");
+  m.classList.add("is-open");
+  m.setAttribute("aria-hidden", "false");
+  // Reset complet
+  trSyncResetState();
+  $("tr-sync-phone").value = "";
+  $("tr-sync-pin").value = "";
+  $("tr-sync-code").value = "";
+  trSyncSetStatus("", "");
+  trSyncShowStep(1);
+  setTimeout(() => $("tr-sync-phone").focus(), 50);
+}
+
+function closeTrSyncModal() {
+  const m = $("tr-sync-modal");
+  m.classList.remove("is-open");
+  m.setAttribute("aria-hidden", "true");
+  // Vidage immédiat de tous les champs
+  $("tr-sync-phone").value = "";
+  $("tr-sync-pin").value = "";
+  $("tr-sync-code").value = "";
+  trSyncResetState();
+}
+
+$("btn-tr-sync").addEventListener("click", openTrSyncModal);
+$("tr-sync-cancel-1").addEventListener("click", closeTrSyncModal);
+$("tr-sync-cancel-2").addEventListener("click", closeTrSyncModal);
+$("tr-sync-modal").addEventListener("click", (e) => {
+  if (e.target.id === "tr-sync-modal") closeTrSyncModal();
+});
+
+// ─── ÉTAPE 1 : phone + PIN → /api/tr/sync/init ─────────────────────────────
+$("tr-sync-form-1").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const phone = $("tr-sync-phone").value.trim();
+  const pin = $("tr-sync-pin").value.trim();
+  const submit = $("tr-sync-submit-1");
+
+  if (!/^\+\d{9,15}$/.test(phone)) {
+    trSyncSetStatus("❌ Téléphone invalide (format +33612345678)", "err");
+    return;
+  }
+  if (!/^\d{4}$/.test(pin)) {
+    trSyncSetStatus("❌ PIN invalide (4 chiffres)", "err");
+    return;
+  }
+
+  submit.disabled = true;
+  trSyncSetStatus("⏳ Demande de validation à Trade Republic…", "");
+
+  // Build payload, clear input fields immediately
+  const payload = JSON.stringify({ phone, pin });
+  $("tr-sync-phone").value = "";
+  $("tr-sync-pin").value = "";
+
+  try {
+    const r = await apiFetch("/api/tr/sync/init", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+    });
+    const d = await r.json().catch(() => ({}));
+
+    if (r.status === 401 && d.auth_required) {
+      closeTrSyncModal();
+      showPinOverlay("form");
+      return;
+    }
+    if (!r.ok) {
+      trSyncSetStatus(`❌ ${d.error || r.statusText}`, "err");
+      return;
+    }
+    // Succès : on stocke le session_id en RAM JS (juste pour la durée de la modal)
+    _trSyncState.sessionId = d.session_id;
+    trSyncSetStatus("📱 Vérifie ton app TR pour le code", "ok");
+    // Hint sur le mode (full vs incremental)
+    const hint = $("tr-sync-mode-hint");
+    if (d.sync_mode === "incrementale" && d.last_event_iso) {
+      const lastDate = new Date(d.last_event_iso).toLocaleDateString();
+      hint.textContent = `Mode : sync incrémentale (dernière sync : ${lastDate}). Devrait être rapide.`;
+    } else {
+      hint.textContent = "Mode : sync complète (première fois). Ça peut prendre 30-60 secondes.";
+    }
+    trSyncShowStep(2);
+    trSyncStartCountdown(d.countdown_seconds || 60);
+    setTimeout(() => $("tr-sync-code").focus(), 50);
+  } catch (err) {
+    trSyncSetStatus(`❌ ${err.message}`, "err");
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+// ─── ÉTAPE 2 : code → /api/tr/sync/verify ──────────────────────────────────
+$("tr-sync-form-2").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = $("tr-sync-code").value.trim();
+  const submit = $("tr-sync-submit-2");
+
+  if (!/^\d{4,8}$/.test(code)) {
+    trSyncSetStatus("❌ Code invalide (4-8 chiffres)", "err");
+    return;
+  }
+  if (!_trSyncState.sessionId) {
+    trSyncSetStatus("❌ Session perdue. Annule et recommence.", "err");
+    return;
+  }
+
+  submit.disabled = true;
+  trSyncSetStatus("⏳ Synchronisation en cours… (peut prendre 30s)", "");
+
+  const payload = JSON.stringify({
+    session_id: _trSyncState.sessionId,
+    code,
+  });
+  $("tr-sync-code").value = "";
+
+  try {
+    const r = await apiFetch("/api/tr/sync/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+    });
+    const d = await r.json().catch(() => ({}));
+
+    if (r.status === 401 && d.auth_required) {
+      closeTrSyncModal();
+      showPinOverlay("form");
+      return;
+    }
+    if (r.status === 410) {
+      trSyncSetStatus("❌ Session expirée. Annule et recommence.", "err");
+      return;
+    }
+    if (!r.ok) {
+      trSyncSetStatus(`❌ ${d.error || r.statusText}`, "err");
+      return;
+    }
+    const modeTag = d.sync_mode === "incrementale" ? "⚡" : "📥";
+    trSyncSetStatus(
+      `${modeTag} +${d.added} transaction(s), ${d.skipped} doublon(s) — total ${d.total}`,
+      "ok",
+    );
+    await loadReleveFromServer();
+    setTimeout(closeTrSyncModal, 2500);
+  } catch (err) {
+    trSyncSetStatus(`❌ ${err.message}`, "err");
+  } finally {
+    submit.disabled = false;
   }
 });
 

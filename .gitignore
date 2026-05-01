@@ -208,3 +208,14 @@ __marimo__/
 Releve.csv
 *.pdf
 known_merchants.json
+
+# Credentials Trade Republic chiffres (au cas ou la cle Fernet fuiterait, on ne push pas le payload)
+# Logs applicatifs (peuvent contenir des stack traces sensibles)
+app.log
+*.log
+
+# Cache pytr (token de session TR si jamais pytr en cree un en local)
+.pytr/
+
+# Etat de la sync incrementale (timestamp seulement, mais propre a chaque user)
+data/users/**/last_tr_sync.json
