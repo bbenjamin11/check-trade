@@ -146,20 +146,26 @@ class TRSyncService:
                 f"Recuperation des donnees TR echouee ({type(e).__name__})"
             ) from None
 
-        # ---- DEBUG : sauvegarde des events bruts ----
-        drop_reasons: dict[str, int] = {}
+        # ---- DEBUG : sauvegarde des events bruts (optionnel) ----
         if debug_csv_dir is not None:
-            self._write_debug_csvs(timeline_events, debug_csv_dir, drop_reasons)
+            self._write_debug_csvs(timeline_events, debug_csv_dir, {})
 
         # Conversion au format Releve.csv (1 event peut donner 0, 1 ou 2 lignes)
+        # Raison de drop toujours calculee (pas seulement en mode debug_csv_dir)
+        # et loggee : sinon impossible de savoir apres coup pourquoi des
+        # evenements bruts recus de l'API n'ont jamais atterri dans le CSV.
         new_rows = []
         dropped_count = 0
+        drop_reasons: dict[str, int] = {}
         for evt in timeline_events:
             rows = self._event_to_csv_rows(evt)
             if rows:
                 new_rows.extend(rows)
             else:
                 dropped_count += 1
+                _, reason = self._event_to_csv_row_debug(evt)
+                reason = reason or "unknown"
+                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
 
         from parser import (
             ecrire_csv,
@@ -196,6 +202,27 @@ class TRSyncService:
             added, skipped, len(existing), portfolio_count,
             len(timeline_events), len(new_rows), dropped_count,
         )
+        if drop_reasons:
+            logger.warning("Raisons de drop (event brut -> aucune ligne CSV) : %s", drop_reasons)
+            # Echantillon (max 3 par raison) pour verifier a l'oeil qu'aucun
+            # evenement avec un montant reel n'est droppe a tort.
+            samples_by_reason: dict[str, list] = {}
+            for evt in timeline_events:
+                row = self._event_to_csv_rows(evt)
+                if row:
+                    continue
+                _, reason = self._event_to_csv_row_debug(evt)
+                reason = reason or "unknown"
+                bucket = samples_by_reason.setdefault(reason, [])
+                if len(bucket) < 3:
+                    bucket.append({
+                        "timestamp": evt.get("timestamp") if isinstance(evt, dict) else None,
+                        "eventType": evt.get("eventType") if isinstance(evt, dict) else None,
+                        "title": evt.get("title") if isinstance(evt, dict) else None,
+                        "subtitle": evt.get("subtitle") if isinstance(evt, dict) else None,
+                        "amount": evt.get("amount") if isinstance(evt, dict) else None,
+                    })
+            logger.warning("Echantillons events droppes : %s", samples_by_reason)
 
         return SyncResult(
             added=added,
