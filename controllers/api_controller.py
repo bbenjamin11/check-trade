@@ -563,6 +563,43 @@ def tr_sync_verify():
     })
 
 
+@api_bp.route('/maintenance/dedupe', methods=['POST'])
+@require_pin
+def maintenance_dedupe():
+    """
+    Nettoyage ponctuel : supprime les doublons de contenu crees par le bug
+    de dedup pre-TR_ID (une resynchronisation complete pouvait re-ajouter
+    tout l'historique deja present, faute de TR_ID sur les vieilles lignes).
+    Voir parser.dedupe_releve_by_content pour la regle exacte.
+    """
+    user_id = auth.get_session_user()
+    pin = auth.get_session_pin()
+    csv_path = auth.releve_path(user_id)
+    if not csv_path.is_file():
+        return jsonify({"error": "Releve.csv introuvable"}), 404
+
+    fd_csv, path_csv = tempfile.mkstemp(suffix=".csv")
+    os.close(fd_csv)
+    tmp_csv = Path(path_csv)
+    try:
+        from parser import dedupe_releve_by_content
+
+        tmp_csv.write_text(auth.read_releve_csv_text(csv_path, pin), encoding="utf-8")
+        stats = dedupe_releve_by_content(tmp_csv)
+        auth.write_releve_csv_text(csv_path, tmp_csv.read_text(encoding="utf-8"), pin)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        tmp_csv.unlink(missing_ok=True)
+
+    return jsonify({
+        "ok": True,
+        "removed": stats["removed"],
+        "total": stats["total"],
+        "message": f"{stats['removed']} doublon(s) supprimé(s) — {stats['total']} ligne(s) restantes.",
+    })
+
+
 @api_bp.route('/tr/balance')
 @require_pin
 def tr_balance():

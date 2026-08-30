@@ -521,28 +521,64 @@ def _normalize_row_width(row: list[str], width: int = len(COLNAMES)) -> list[str
     return r[:width]
 
 
-def _transaction_dedup_key(row: list[str]) -> tuple:
-    """
-    Cle sans solde ni marchand/categorie (reimport PDF / CSV heterogenes).
-
-    Si la ligne porte un TR_ID (evenement issu de la sync Trade Republic,
-    colonne 9), on l'utilise comme cle EXCLUSIVE : deux transactions TR
-    distinctes peuvent avoir exactement la meme date/montant/description
-    (ex: deux virements identiques le meme jour) et ne doivent PAS etre
-    fusionnees. Sans TR_ID (import PDF), on retombe sur l'ancienne cle
-    basee sur le contenu.
-    """
+def _content_key(row: list[str]) -> tuple:
+    """Cle basee sur le contenu (sans solde ni marchand/categorie/TR_ID)."""
     r = _normalize_row_width(row)
-    tr_id = r[8].strip() if len(r) > 8 else ""
-    if tr_id:
-        return ("trid", tr_id)
     return (
+        "content",
         r[0].strip().lower(),
         r[1].strip().lower(),
         r[2].strip(),
         r[3].strip(),
         r[5].strip().lower(),
     )
+
+
+class _DedupTracker:
+    """
+    Suit les transactions deja vues pour detecter les doublons lors d'une fusion.
+
+    Trois espaces de cles :
+      - trids deja vus : un evenement TR (identifie par son TR_ID) ne doit
+        jamais etre ajoute deux fois.
+      - legacy_content : contenu des lignes SANS TR_ID (import PDF, ou
+        vieilles lignes synchronisees avant l'ajout de la colonne TR_ID).
+        Sert a detecter les doublons entre anciennes lignes et NOUVELLES
+        lignes avec TR_ID representant le meme evenement — sinon une
+        resync complete re-ajoute tout l'historique deja present (aucune
+        cle ne matchait jamais entre les deux formats).
+      - any_content : contenu de TOUTES les lignes. Sert uniquement a
+        decider si une NOUVELLE ligne SANS TR_ID (reimport PDF) est un
+        doublon d'une transaction deja connue (avec ou sans TR_ID).
+
+    Volontairement : deux lignes AVEC TR_ID distincts et meme contenu (ex :
+    deux virements identiques le meme jour) restent DISTINCTES — seul un
+    TR_ID deja vu, ou un match contre une ligne SANS TR_ID, declenche un
+    doublon.
+    """
+
+    def __init__(self) -> None:
+        self.trids: set[str] = set()
+        self.legacy_content: set[tuple] = set()
+        self.any_content: set[tuple] = set()
+
+    def add(self, row: list[str]) -> None:
+        r = _normalize_row_width(row)
+        tid = r[8].strip() if len(r) > 8 else ""
+        ck = _content_key(r)
+        self.any_content.add(ck)
+        if tid:
+            self.trids.add(tid)
+        else:
+            self.legacy_content.add(ck)
+
+    def is_duplicate(self, row: list[str]) -> bool:
+        r = _normalize_row_width(row)
+        tid = r[8].strip() if len(r) > 8 else ""
+        ck = _content_key(r)
+        if tid:
+            return tid in self.trids or ck in self.legacy_content
+        return ck in self.any_content
 
 
 def _date_sort_key(row: list[str]) -> tuple[int, int, int]:
@@ -585,24 +621,72 @@ def fusionner_pdf_dans_releve(
     nouvelles = extraire_transactions(pdf_path, debug=False)
     existantes = [_normalize_row_width(r) for r in lire_releve_csv(out)]
 
-    seen: set[tuple[str, str, str, str, str]] = {
-        _transaction_dedup_key(r) for r in existantes
-    }
+    tracker = _DedupTracker()
+    for r in existantes:
+        tracker.add(r)
+
     added = 0
     skipped = 0
     for r in nouvelles:
         r = _normalize_row_width(r)
-        k = _transaction_dedup_key(r)
-        if k in seen:
+        if tracker.is_duplicate(r):
             skipped += 1
             continue
-        seen.add(k)
+        tracker.add(r)
         existantes.append(r)
         added += 1
 
     existantes.sort(key=_date_sort_key)
     ecrire_csv(existantes, out)
     return {"added": added, "skipped": skipped, "total": len(existantes)}
+
+
+def dedupe_releve_by_content(csv_path: Path | None = None) -> dict[str, int]:
+    """
+    Nettoyage ponctuel : supprime les doublons de CONTENU (meme date/type/
+    montants/description) provoques par le bug de dedup pre-TR_ID (une
+    resynchronisation complete pouvait re-ajouter tout l'historique deja
+    present sans TR_ID).
+
+    Regle : si un groupe de lignes au meme contenu contient au moins une
+    ligne avec TR_ID, on garde la ou les lignes avec TR_ID (TR_ID distincts
+    = vraies transactions separees, ex: 2 virements identiques le meme
+    jour) et on supprime les lignes SANS TR_ID du groupe (ancien doublon
+    du bug). Si aucune ligne du groupe n'a de TR_ID, on garde uniquement
+    la premiere (comportement historique pre-TR_ID).
+    """
+    path = csv_path or DEFAULT_CSV
+    rows = [_normalize_row_width(r) for r in lire_releve_csv(path)]
+
+    groups: dict[tuple, list[list[str]]] = {}
+    for r in rows:
+        groups.setdefault(_content_key(r), []).append(r)
+
+    kept: list[list[str]] = []
+    removed = 0
+    for grp in groups.values():
+        if len(grp) == 1:
+            kept.append(grp[0])
+            continue
+        with_id = [r for r in grp if r[8].strip()]
+        without_id = [r for r in grp if not r[8].strip()]
+        if with_id:
+            seen_ids: set[str] = set()
+            for r in with_id:
+                tid = r[8].strip()
+                if tid not in seen_ids:
+                    seen_ids.add(tid)
+                    kept.append(r)
+                else:
+                    removed += 1
+            removed += len(without_id)
+        else:
+            kept.append(grp[0])
+            removed += len(grp) - 1
+
+    kept.sort(key=_date_sort_key)
+    ecrire_csv(kept, path)
+    return {"removed": removed, "total": len(kept)}
 
 
 def reappliquer_categories_csv(

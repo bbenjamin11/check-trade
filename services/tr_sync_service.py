@@ -165,23 +165,24 @@ class TRSyncService:
             ecrire_csv,
             lire_releve_csv,
             _normalize_row_width,
-            _transaction_dedup_key,
+            _DedupTracker,
             _date_sort_key,
             reappliquer_categories_csv,
         )
 
         existing = [_normalize_row_width(r) for r in lire_releve_csv(csv_path)]
-        seen = {_transaction_dedup_key(r) for r in existing}
+        tracker = _DedupTracker()
+        for r in existing:
+            tracker.add(r)
 
         added = 0
         skipped = 0
         for row in new_rows:
             row = _normalize_row_width(row)
-            key = _transaction_dedup_key(row)
-            if key in seen:
+            if tracker.is_duplicate(row):
                 skipped += 1
                 continue
-            seen.add(key)
+            tracker.add(row)
             existing.append(row)
             added += 1
 
