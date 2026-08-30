@@ -157,6 +157,9 @@ class AuthService:
     def last_tr_sync_path(self, user_id: str) -> Path:
         return DATA_DIR / "users" / user_id / "last_tr_sync.json"
 
+    def tr_balance_path(self, user_id: str) -> Path:
+        return DATA_DIR / "users" / user_id / "tr_balance.json"
+
     @staticmethod
     def merchant_key(merchant: str) -> str:
         return merchant.strip().upper()
@@ -205,6 +208,32 @@ class AuthService:
         payload = {
             "last_event_iso": last_event_iso,
             "last_sync_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        }
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def load_tr_balance(self, user_id: str) -> Optional[dict]:
+        """
+        Dernier solde reel connu (recupere directement via l'API Trade Republic
+        lors de la derniere sync reussie). None si jamais synchronise.
+        """
+        path = self.tr_balance_path(user_id)
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        if not isinstance(data, dict) or not data.get("amount"):
+            return None
+        return data
+
+    def save_tr_balance(self, user_id: str, amount: str, currency: str) -> None:
+        path = self.tr_balance_path(user_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "amount": amount,
+            "currency": currency,
+            "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         }
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 

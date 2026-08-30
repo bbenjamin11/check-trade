@@ -45,6 +45,10 @@ class SyncResult:
     # True si on a fait une sync complete (pas de filtre date), False sinon
     was_full_sync: bool = True
     error: Optional[str] = None
+    # Solde cash REEL recupere directement via l'API TR (pas un calcul local).
+    # None si la recuperation a echoue (non bloquant, la sync reste valide).
+    cash_amount: Optional[str] = None
+    cash_currency: Optional[str] = None
     # Stats de debug (remplies si debug_csv_dir est fourni)
     debug_raw_events: int = 0
     debug_parsed_rows: int = 0
@@ -133,7 +137,7 @@ class TRSyncService:
         logger.info("TR login complet, debut sync timeline")
 
         try:
-            timeline_events, portfolio_count, latest_iso = asyncio.run(
+            timeline_events, portfolio_count, latest_iso, cash_amount, cash_currency = asyncio.run(
                 self._fetch_data_async(api, not_before_iso=not_before_iso)
             )
         except Exception as e:
@@ -147,10 +151,15 @@ class TRSyncService:
         if debug_csv_dir is not None:
             self._write_debug_csvs(timeline_events, debug_csv_dir, drop_reasons)
 
-        # Conversion au format Releve.csv
-        new_rows = [self._event_to_csv_row(evt) for evt in timeline_events]
-        dropped_count = sum(1 for r in new_rows if r is None)
-        new_rows = [r for r in new_rows if r is not None]
+        # Conversion au format Releve.csv (1 event peut donner 0, 1 ou 2 lignes)
+        new_rows = []
+        dropped_count = 0
+        for evt in timeline_events:
+            rows = self._event_to_csv_rows(evt)
+            if rows:
+                new_rows.extend(rows)
+            else:
+                dropped_count += 1
 
         from parser import (
             ecrire_csv,
@@ -194,6 +203,8 @@ class TRSyncService:
             portfolio_lines=portfolio_count,
             latest_event_iso=latest_iso,
             was_full_sync=(not_before_iso is None),
+            cash_amount=cash_amount,
+            cash_currency=cash_currency,
             debug_raw_events=len(timeline_events),
             debug_parsed_rows=len(new_rows),
             debug_dropped=dropped_count,
@@ -208,16 +219,62 @@ class TRSyncService:
         self,
         api,
         not_before_iso: Optional[str] = None,
-    ) -> tuple[list[dict], int, Optional[str]]:
-        events: list[dict] = []
+    ) -> tuple[list[dict], int, Optional[str], Optional[str], Optional[str]]:
         portfolio_positions = 0
         latest_iso: Optional[str] = None
+        cash_amount: Optional[str] = None
+        cash_currency: Optional[str] = None
 
         try:
+            # --- 1. timelineTransactions ---
             await api.timeline_transactions()
-            events, latest_iso = await self._collect_paginated_until(
+            tx_events, latest_iso_tx = await self._collect_paginated_until(
                 api, "timelineTransactions", not_before_iso=not_before_iso
             )
+            logger.info("timelineTransactions : %d events", len(tx_events))
+
+            # --- 2. timelineActivityLog (saveback credits, rewards, etc.) ---
+            activity_events: list[dict] = []
+            latest_iso_act: Optional[str] = None
+            try:
+                await api.timeline_activity_log()
+                activity_events, latest_iso_act = await self._collect_paginated_until(
+                    api, "timelineActivityLog", not_before_iso=not_before_iso
+                )
+                logger.info("timelineActivityLog : %d events", len(activity_events))
+            except Exception as e:
+                logger.warning("timelineActivityLog KO (non bloquant) : %s", type(e).__name__)
+
+            # --- Fusion par ID (dedup) ---
+            seen_ids: set[str] = set()
+            events: list[dict] = []
+            for evt in tx_events:
+                eid = evt.get("id") if isinstance(evt, dict) else None
+                if eid and eid not in seen_ids:
+                    seen_ids.add(eid)
+                    events.append(evt)
+                elif not eid:
+                    events.append(evt)
+
+            activity_only = 0
+            for evt in activity_events:
+                eid = evt.get("id") if isinstance(evt, dict) else None
+                if eid and eid not in seen_ids:
+                    seen_ids.add(eid)
+                    events.append(evt)
+                    activity_only += 1
+                elif not eid:
+                    events.append(evt)
+                    activity_only += 1
+
+            logger.info(
+                "Fusion : %d tx + %d activity = %d total (%d uniquement dans activity)",
+                len(tx_events), len(activity_events), len(events), activity_only,
+            )
+
+            # latest_iso = le plus recent des deux
+            candidates = [t for t in [latest_iso_tx, latest_iso_act] if t is not None]
+            latest_iso = max(candidates) if candidates else None
 
             try:
                 await api.portfolio()
@@ -232,13 +289,25 @@ class TRSyncService:
             except (asyncio.TimeoutError, Exception) as e:
                 logger.warning("TR portfolio KO (non bloquant) : %s", type(e).__name__)
 
+            # --- Solde cash reel (type "cash", cf. pytr) ---
+            try:
+                await api.cash()
+                _, _, cash_resp = await asyncio.wait_for(api.recv(), timeout=10)
+                if isinstance(cash_resp, list) and cash_resp:
+                    first = cash_resp[0]
+                    cash_amount = str(first.get("amount")) if first.get("amount") is not None else None
+                    cash_currency = first.get("currencyId")
+                logger.info("TR cash : %s %s", cash_amount, cash_currency)
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.warning("TR cash KO (non bloquant) : %s", type(e).__name__)
+
         finally:
             try:
                 await api.close()
             except Exception:
                 pass
 
-        return events, portfolio_positions, latest_iso
+        return events, portfolio_positions, latest_iso, cash_amount, cash_currency
 
     async def _collect_paginated_until(
         self,
@@ -262,18 +331,36 @@ class TRSyncService:
                     api.recv(), timeout=15
                 )
             except asyncio.TimeoutError:
-                logger.warning("Timeout recv() apres %d pages", len(all_items))
+                logger.warning("Timeout recv() apres %d pages / %d items collectes", page_idx, len(all_items))
                 break
 
-            if subscription.get("type") != expected_type:
+            recv_type = subscription.get("type") if isinstance(subscription, dict) else repr(subscription)
+            logger.debug(
+                "[PAGE %d] recv type=%r expected=%r items_so_far=%d",
+                page_idx, recv_type, expected_type, len(all_items),
+            )
+
+            if recv_type != expected_type:
+                logger.warning(
+                    "[PAGE %d] TYPE INATTENDU ignore : %r (attendu=%r). "
+                    "Subscription complete : %r | Response keys : %s",
+                    page_idx, recv_type, expected_type,
+                    subscription, list(response.keys()) if isinstance(response, dict) else repr(response),
+                )
                 continue
 
             items = response.get("items") or []
+            logger.debug("[PAGE %d] %d items recus", page_idx, len(items))
             stop_pagination = False
 
-            for evt in items:
+            for item_idx, evt in enumerate(items):
                 ts = evt.get("timestamp") if isinstance(evt, dict) else None
                 if not isinstance(ts, str):
+                    logger.warning(
+                        "[PAGE %d / item %d] timestamp ignoré : valeur=%r type=%s | evt keys=%s",
+                        page_idx, item_idx, ts, type(ts).__name__,
+                        list(evt.keys()) if isinstance(evt, dict) else repr(evt),
+                    )
                     continue
 
                 if latest_iso is None or ts > latest_iso:
@@ -281,27 +368,44 @@ class TRSyncService:
 
                 if not_before_iso is not None and ts <= not_before_iso:
                     logger.info(
-                        "Sync incrementale : stop a la page %d, event ts=%s <= %s",
-                        page_idx, ts, not_before_iso,
+                        "Sync incrementale : stop page=%d item=%d, event ts=%s <= not_before=%s",
+                        page_idx, item_idx, ts, not_before_iso,
                     )
                     stop_pagination = True
                     break
 
+                logger.debug(
+                    "[PAGE %d / item %d] GARDE ts=%s eventType=%r title=%r amount=%r",
+                    page_idx, item_idx, ts,
+                    evt.get("eventType"), evt.get("title"), evt.get("amount"),
+                )
                 all_items.append(evt)
+
+            logger.info(
+                "[PAGE %d] traitement fini : %d items page, %d total collectes, stop=%s",
+                page_idx, len(items), len(all_items), stop_pagination,
+            )
 
             if stop_pagination:
                 break
 
             cursor = (response.get("cursors") or {}).get("after")
             if not cursor:
+                logger.info("[PAGE %d] Pas de curseur 'after' -> fin pagination", page_idx)
                 break
 
             if expected_type == "timelineTransactions":
                 await api.timeline_transactions(after=cursor)
+            elif expected_type == "timelineActivityLog":
+                await api.timeline_activity_log(after=cursor)
             else:
                 logger.warning("Pagination non geree pour type=%s", expected_type)
                 break
 
+        logger.info(
+            "_collect_paginated_until TERMINE : %d items total, latest_iso=%s",
+            len(all_items), latest_iso,
+        )
         return all_items, latest_iso
 
     # ============================================================
@@ -443,25 +547,30 @@ class TRSyncService:
         )
 
     # ============================================================
-    # CONVERSION EVENT -> LIGNE Releve.csv
+    # CONVERSION EVENT -> LIGNE(S) Releve.csv
     # ============================================================
 
     @staticmethod
-    def _event_to_csv_row(evt: dict) -> Optional[list[str]]:
+    def _event_to_csv_rows(evt: dict) -> list[list[str]]:
         """
-        Convertit un event timelineTransactions au format Releve.csv :
-            [DATE, TYPE, MONEY IN, MONEY OUT, BALANCE, DESCRIPTION, MERCHANT, CATEGORY]
+        Convertit un event TR en 0, 1 ou 2 lignes Releve.csv.
+        Format ligne : [DATE, TYPE, MONEY IN, MONEY OUT, BALANCE, DESCRIPTION, MERCHANT, CATEGORY]
+
+        Cas spécial SAVEBACK_AGGREGATE : génère 2 lignes
+          1) Saveback credit  +amt  (TR t'offre l'argent)
+          2) Saveback buy     -amt  (cet argent achète des actions)
+        Logique identique à pytr/transactions.py ConditionalEventType.SAVEBACK.
         """
         if not isinstance(evt, dict):
-            return None
+            return []
 
         ts_raw = evt.get("timestamp")
         if not ts_raw:
-            return None
+            return []
         try:
             dt = datetime.fromisoformat(ts_raw[:19])
         except (TypeError, ValueError):
-            return None
+            return []
 
         months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -472,54 +581,123 @@ class TRSyncService:
             try:
                 amt_value = float(amount.get("value", 0))
             except (TypeError, ValueError):
-                return None
+                return []
         else:
             try:
                 amt_value = float(amount)
             except (TypeError, ValueError):
-                return None
+                return []
 
-        money_in = ""
-        money_out = ""
-        formatted = f"euro{abs(amt_value):.2f}".replace("euro", "€").replace(".", ",")
-        if amt_value > 0:
-            money_in = formatted
-        elif amt_value < 0:
-            money_out = formatted
-        else:
-            return None
+        if amt_value == 0:
+            return []
 
         title = (evt.get("title") or "").strip()
         subtitle = (evt.get("subtitle") or "").replace("\n", " ").strip()
         description = f"{title} {subtitle}".strip()
+        event_type = evt.get("eventType") or ""
+        eid = str(evt.get("id") or "").strip()
 
-        tr_type = TRSyncService._infer_type(
-            evt.get("eventType") or "",
-            title,
-            subtitle,
-        )
+        def _fmt(v: float) -> str:
+            return f"€{abs(v):.2f}".replace(".", ",")
 
-        return [
-            date_str,
-            tr_type,
-            money_in,
-            money_out,
-            "",
-            description,
-            "",
-            "",
-        ]
+        # --- Cas SAVEBACK_AGGREGATE : 2 lignes (credit + buy) ---
+        # IMPORTANT : chaque sous-ligne recoit un TR_ID distinct (suffixe) sinon
+        # la dedup id-based les traiterait comme un seul et meme doublon.
+        if event_type == "SAVEBACK_AGGREGATE":
+            # Ligne 1 : crédit TR → money_in
+            credit_row = [
+                date_str, "Saveback",
+                _fmt(abs(amt_value)), "",  # money_in
+                "", f"Saveback credit {description}".strip(), "", "",
+                f"{eid}:credit" if eid else "",
+            ]
+            # Ligne 2 : investissement → money_out
+            invest_row = [
+                date_str, "Saveback",
+                "", _fmt(abs(amt_value)),  # money_out
+                "", f"Saveback invest {description}".strip(), "", "",
+                f"{eid}:invest" if eid else "",
+            ]
+            return [credit_row, invest_row]
+
+        # --- Cas général ---
+        money_in = ""
+        money_out = ""
+        if amt_value > 0:
+            money_in = _fmt(amt_value)
+        else:
+            money_out = _fmt(amt_value)
+
+        tr_type = TRSyncService._infer_type(event_type, title, subtitle)
+
+        return [[date_str, tr_type, money_in, money_out, "", description, "", "", eid]]
+
+    @staticmethod
+    def _event_to_csv_row(evt: dict) -> Optional[list[str]]:
+        """Rétro-compat : retourne la première ligne uniquement (utilisé par le debug)."""
+        rows = TRSyncService._event_to_csv_rows(evt)
+        return rows[0] if rows else None
+
+    # Mapping explicite des eventTypes connus -> type CSV
+    # Basé sur pytr/event.py PPEventType mapping
+    _EVENT_TYPE_MAP: dict[str, str] = {
+        # Dépôts
+        "PAYMENT_INBOUND":                      "Deposit",
+        "PAYMENT_INBOUND_APPLE_PAY":            "Deposit",
+        "PAYMENT_INBOUND_GOOGLE_PAY":           "Deposit",
+        "PAYMENT_INBOUND_SEPA_DIRECT_DEBIT":    "Deposit",
+        "PAYMENT_INBOUND_CREDIT_CARD":          "Deposit",
+        "BANK_TRANSACTION_INCOMING":            "Deposit",
+        "CARD_REFUND":                          "Deposit",    # remboursement carte
+        # Retraits
+        "PAYMENT_OUTBOUND":                     "Withdrawal",
+        "OUTGOING_TRANSFER":                    "Withdrawal",
+        "OUTGOING_TRANSFER_DELEGATION":         "Withdrawal",
+        # Carte
+        "CARD_TRANSACTION":                     "Card payment",
+        "CARD_VERIFICATION":                    "Card payment",
+        # Intérêts
+        "INTEREST_PAYOUT":                      "Interest",
+        "INTEREST_PAYOUT_CREATED":              "Interest",
+        # Dividendes / revenus
+        "DIVIDEND":                             "Dividend",
+        "CREDIT":                               "Dividend",
+        "SSP_CORPORATE_ACTION_CASH":            "Dividend",
+        # Plans d'épargne
+        "SAVINGS_PLAN_EXECUTED":                "SavingsPlan",
+        "SAVINGS_PLAN_INVOICE_CREATED":         "SavingsPlan",
+        "TRADING_SAVINGSPLAN_EXECUTED":         "SavingsPlan",
+        # Saveback / rewards
+        "SAVEBACK_AGGREGATE":                   "Saveback",
+        "ACQUISITION_TRADE_PERK":               "Saveback",
+        "benefits_saveback_execution":          "Saveback",
+        "CASH_PERK":                            "Reward",
+        # Taxes
+        "TAX_CORRECTION":                       "Tax refund",
+        "TAX_REFUND":                           "Tax refund",
+        # Marchés privés
+        "PRIVATE_MARKET_FUND_TRADE_EXECUTED":   "Buy",
+        # Trades
+        "TRADE_INVOICE":                        "Trade",
+    }
 
     @staticmethod
     def _infer_type(event_type: str, title: str, subtitle: str) -> str:
-        et = (event_type or "").lower()
+        # 1. Lookup exact dans le mapping
+        et_raw = (event_type or "").strip()
+        mapped = TRSyncService._EVENT_TYPE_MAP.get(et_raw)
+        if mapped:
+            return mapped
+
+        # 2. Heuristiques sur eventType + texte (fallback)
+        et = et_raw.lower()
         txt = (title + " " + subtitle).lower()
 
         if "card" in et or "card" in txt:
             return "Card payment"
-        if "deposit" in et or "einzahlung" in txt or "deposit" in txt:
+        if "deposit" in et or "inbound" in et or "einzahlung" in txt or "deposit" in txt:
             return "Deposit"
-        if "withdraw" in et or "auszahlung" in txt or "withdrawal" in txt:
+        if "withdraw" in et or "outbound" in et or "auszahlung" in txt or "withdrawal" in txt:
             return "Withdrawal"
         if "dividend" in et or "dividend" in txt or "dividende" in txt:
             return "Dividend"
@@ -529,6 +707,8 @@ class TRSyncService:
             return "SavingsPlan"
         if "saveback" in et or "saveback" in txt:
             return "Saveback"
+        if "reward" in et or "reward" in txt or "bonus" in txt or "perk" in et:
+            return "Reward"
         if "round" in et or "round" in txt:
             return "RoundUp"
         if "buy" in et or "kauf" in txt or "purchase" in txt:
@@ -537,4 +717,6 @@ class TRSyncService:
             return "Sell"
         if "fee" in et or "gebühr" in txt or "fee" in txt:
             return "Fee"
+        if "tax" in et or "steuer" in txt:
+            return "Tax refund"
         return "Transfer"

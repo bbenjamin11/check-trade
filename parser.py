@@ -41,7 +41,7 @@ SKIP_Y_MIN_FOOTER = 750
 # ── Nouvelles colonnes ────────────────────────────────────────────────────────
 COLNAMES = [
     "DATE", "TYPE", "MONEY IN", "MONEY OUT",
-    "BALANCE", "DESCRIPTION", "MERCHANT", "CATEGORY",
+    "BALANCE", "DESCRIPTION", "MERCHANT", "CATEGORY", "TR_ID",
 ]
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -521,9 +521,21 @@ def _normalize_row_width(row: list[str], width: int = len(COLNAMES)) -> list[str
     return r[:width]
 
 
-def _transaction_dedup_key(row: list[str]) -> tuple[str, str, str, str, str]:
-    """Clé sans solde ni marchand/catégorie (réimport PDF / CSV hétérogènes)."""
+def _transaction_dedup_key(row: list[str]) -> tuple:
+    """
+    Cle sans solde ni marchand/categorie (reimport PDF / CSV heterogenes).
+
+    Si la ligne porte un TR_ID (evenement issu de la sync Trade Republic,
+    colonne 9), on l'utilise comme cle EXCLUSIVE : deux transactions TR
+    distinctes peuvent avoir exactement la meme date/montant/description
+    (ex: deux virements identiques le meme jour) et ne doivent PAS etre
+    fusionnees. Sans TR_ID (import PDF), on retombe sur l'ancienne cle
+    basee sur le contenu.
+    """
     r = _normalize_row_width(row)
+    tr_id = r[8].strip() if len(r) > 8 else ""
+    if tr_id:
+        return ("trid", tr_id)
     return (
         r[0].strip().lower(),
         r[1].strip().lower(),
