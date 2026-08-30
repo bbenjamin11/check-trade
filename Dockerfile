@@ -5,6 +5,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Chromium headless requis par pytr (resolution du WAF Trade Republic)
+RUN playwright install --with-deps chromium
+
 COPY . .
 
 VOLUME ["/app/data"]
