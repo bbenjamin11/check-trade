@@ -7,9 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ARG FLASK_SECRET_KEY
-ENV FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
-
 VOLUME ["/app/data"]
 
 EXPOSE 5000
