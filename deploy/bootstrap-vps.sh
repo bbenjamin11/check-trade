@@ -61,6 +61,9 @@ ln -sf /etc/nginx/sites-available/check-trade /etc/nginx/sites-enabled/check-tra
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
+echo ">>> Dossier de logs"
+mkdir -p "$APP_DIR/logs"
+
 echo ">>> Premier build + lancement du conteneur"
 docker compose up -d --build
 
