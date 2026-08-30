@@ -545,6 +545,8 @@
     tr.rec-merchant-row td:nth-child(2),
     tr.rec-merchant-row td:nth-child(3) { text-align: right; }
     tr.rec-merchant-row:hover { background: var(--surface2); }
+    tr.rec-merchant-row.rec-pending { background: rgba(129, 140, 248, 0.12); }
+    tr.rec-merchant-row.rec-pending td:first-child { font-weight: 600; }
 
     .rec-cat-select {
       max-width: 260px;
@@ -799,6 +801,12 @@
           autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"
           required pattern="^\d{4}$" maxlength="4" />
 
+        <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.82rem; font-weight:400; margin-top:0.4rem;">
+          <input type="checkbox" id="tr-sync-full" style="width:auto;" />
+          Resynchronisation complète (ignore le curseur incrémental — plus lent,
+          à utiliser si des transactions semblent manquantes)
+        </label>
+
         <div class="actions">
           <button type="button" id="tr-sync-cancel-1" class="secondary">Annuler</button>
           <button type="submit" id="tr-sync-submit-1" class="primary">Continuer →</button>
@@ -880,7 +888,8 @@
   <div id="kpis" style="display:none">
     <div class="kpi"><div class="val" id="kpi-out">—</div><div class="lbl">Total dépenses</div></div>
     <div class="kpi"><div class="val" id="kpi-in">—</div><div class="lbl">Total entrées</div></div>
-    <div class="kpi"><div class="val" id="kpi-net">—</div><div class="lbl">Solde net</div></div>
+    <div class="kpi"><div class="val" id="kpi-net">—</div><div class="lbl">Solde net (calculé)</div></div>
+    <div class="kpi"><div class="val" id="kpi-tr-cash">—</div><div class="lbl">Solde réel Trade Republic</div></div>
     <div class="kpi"><div class="val" id="kpi-avg">—</div><div class="lbl">Dépense moy/mois</div></div>
     <div class="kpi"><div class="val" id="kpi-count">—</div><div class="lbl">Transactions</div></div>
     <div class="kpi"><div class="val" id="kpi-months">—</div><div class="lbl">Mois couverts</div></div>
@@ -982,6 +991,11 @@
   <div id="recurrence-section" style="display:none">
     <p class="section-title" style="margin-top:2.5rem">🔁 Récurrence marchands</p>
     <input id="rec-search" type="search" placeholder="🔍 Filtrer marchand ou catégorie…"/>
+    <div id="rec-batch-bar" style="display:none; align-items:center; gap:0.6rem; margin:0.5rem 0; padding:0.5rem 0.7rem; background:var(--bg-alt,rgba(255,255,255,0.04)); border-radius:8px;">
+      <span id="rec-batch-count" style="font-size:0.82rem; color:var(--muted);"></span>
+      <button type="button" id="rec-batch-apply" class="primary" style="margin-left:auto;">Appliquer les modifications</button>
+      <button type="button" id="rec-batch-cancel" class="secondary">Annuler</button>
+    </div>
     <div class="rec-table-wrap" id="rec-table-wrap"></div>
   </div>
 
@@ -1236,6 +1250,19 @@ function renderRecurrenceTable(merchantMap) {
 
   const tbody = document.createElement("tbody");
   const catList = window._cats || [];
+  const pendingChanges = new Map();   // merchant -> nouvelle categorie
+  const pendingRows = [];             // {sel, row, merchant, original}
+
+  const batchBar   = $("rec-batch-bar");
+  const batchCount = $("rec-batch-count");
+  const batchApply = $("rec-batch-apply");
+  const batchCancel = $("rec-batch-cancel");
+
+  function refreshBatchBar() {
+    const n = pendingChanges.size;
+    batchBar.style.display = n ? "flex" : "none";
+    batchCount.textContent = n ? `${n} modification(s) en attente` : "";
+  }
 
   catsSorted.forEach((catObj, ci) => {
     const catRow = document.createElement("tr");
@@ -1273,33 +1300,24 @@ function renderRecurrenceTable(merchantMap) {
         sel.appendChild(o);
       });
 
-      const btn = document.createElement("button");
-      btn.type = "button"; btn.className = "rec-apply-btn"; btn.textContent = "Appliquer";
-      btn.addEventListener("click", async e => {
-        e.stopPropagation(); btn.disabled = true;
-        try {
-          const resp = await apiFetch("/api/categorie", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({ merchant:m.merchant, category:sel.value })
-          });
-          const data = await resp.json().catch(()=>({}));
-          if (resp.status === 401 && data.auth_required) {
-            showPinOverlay("form");
-            throw new Error("Session expirée — saisissez le code.");
-          }
-          if (!resp.ok) throw new Error(data.error||resp.statusText);
-          $("upload-status").textContent = data.message || "✅ Catégorie enregistrée.";
-          const r2 = await apiFetch("/api/load_releve");
-          if (!r2.ok) throw new Error("Rechargement impossible");
-          const text = await r2.text();
-          await render(parseCSV(text));
-        } catch(err) {
-          $("upload-status").textContent = `❌ ${err.message}`;
-        } finally { btn.disabled = false; }
+      // Pas d'appel réseau immédiat : la modification reste "en attente" tant
+      // que le bouton global "Appliquer les modifications" n'est pas cliqué,
+      // ce qui permet de recatégoriser plusieurs marchands d'affilée.
+      sel.addEventListener("change", e => {
+        e.stopPropagation();
+        if (sel.value && sel.value !== catObj.cat) {
+          pendingChanges.set(m.merchant, sel.value);
+          row.classList.add("rec-pending");
+        } else {
+          pendingChanges.delete(m.merchant);
+          row.classList.remove("rec-pending");
+        }
+        refreshBatchBar();
       });
 
-      td4.appendChild(sel); td4.appendChild(btn);
+      pendingRows.push({ sel, row, merchant: m.merchant, original: catObj.cat });
+
+      td4.appendChild(sel);
       row.appendChild(td1); row.appendChild(td2); row.appendChild(td3); row.appendChild(td4);
       tbody.appendChild(row);
     });
@@ -1307,6 +1325,45 @@ function renderRecurrenceTable(merchantMap) {
 
   table.appendChild(tbody);
   wrap.appendChild(table);
+  refreshBatchBar();
+
+  batchCancel.onclick = () => {
+    pendingChanges.clear();
+    pendingRows.forEach(({ sel, row, original }) => {
+      sel.value = original;
+      row.classList.remove("rec-pending");
+    });
+    refreshBatchBar();
+  };
+
+  batchApply.onclick = async () => {
+    if (!pendingChanges.size) return;
+    batchApply.disabled = true;
+    const updates = [...pendingChanges.entries()].map(([merchant, category]) => ({ merchant, category }));
+    try {
+      const resp = await apiFetch("/api/categorie", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.status === 401 && data.auth_required) {
+        showPinOverlay("form");
+        throw new Error("Session expirée — saisissez le code.");
+      }
+      if (!resp.ok) throw new Error(data.error || resp.statusText);
+      $("upload-status").textContent = data.message || "✅ Catégories enregistrées.";
+      pendingChanges.clear();
+      const r2 = await apiFetch("/api/load_releve");
+      if (!r2.ok) throw new Error("Rechargement impossible");
+      const text = await r2.text();
+      await render(parseCSV(text));
+    } catch (err) {
+      $("upload-status").textContent = `❌ ${err.message}`;
+    } finally {
+      batchApply.disabled = false;
+    }
+  };
 
   function toggleGroup(ci) {
     const rows    = tbody.querySelectorAll(`tr[data-group="${ci}"]`);
@@ -2082,10 +2139,41 @@ async function logout() {
   $("upload-status").textContent = "Session fermée.";
 }
 
+function renderTrBalance(amount, currency, updatedAt) {
+  const el = $("kpi-tr-cash");
+  if (!el) return;
+  if (amount === null || amount === undefined) {
+    el.textContent = "—";
+    el.title = "Aucune synchronisation Trade Republic effectuée pour l'instant.";
+    return;
+  }
+  const val = parseFloat(amount);
+  el.textContent = Number.isFinite(val) ? fmtEur(val) : "—";
+  el.title = updatedAt
+    ? `Récupéré directement depuis Trade Republic le ${new Date(updatedAt).toLocaleString()} (${currency})`
+    : `Récupéré directement depuis Trade Republic (${currency})`;
+}
+
+async function refreshTrBalance() {
+  try {
+    const r = await apiFetch("/api/tr/balance");
+    if (!r.ok) return;
+    const d = await r.json().catch(() => ({}));
+    if (d.known) {
+      renderTrBalance(d.amount, d.currency, d.updated_at);
+    } else {
+      renderTrBalance(null);
+    }
+  } catch (_) {
+    // Non bloquant : le reste de la page fonctionne sans ce KPI.
+  }
+}
+
 async function loadReleveFromServer() {
   $("upload-status").textContent = "⏳ Chargement de Releve.csv…";
   try {
     await loadCategories();
+    refreshTrBalance();
     const resp = await apiFetch("/api/load_releve");
     if (resp.status === 404) {
       $("upload-status").textContent = "Aucun Releve.csv — importez un relevé PDF pour créer le fichier.";
@@ -2181,13 +2269,14 @@ $("pdf-releve-input").addEventListener("change", async (e) => {
 let _trSyncState = {
   sessionId: null,
   countdownTimer: null,
+  forceFull: false,
 };
 
 function trSyncResetState() {
   if (_trSyncState.countdownTimer) {
     clearInterval(_trSyncState.countdownTimer);
   }
-  _trSyncState = { sessionId: null, countdownTimer: null };
+  _trSyncState = { sessionId: null, countdownTimer: null, forceFull: false };
 }
 
 function trSyncShowStep(n) {
@@ -2275,7 +2364,8 @@ $("tr-sync-form-1").addEventListener("submit", async (e) => {
   trSyncSetStatus("⏳ Demande de validation à Trade Republic…", "");
 
   // Build payload, clear input fields immediately
-  const payload = JSON.stringify({ phone, pin });
+  _trSyncState.forceFull = $("tr-sync-full").checked;
+  const payload = JSON.stringify({ phone, pin, full: _trSyncState.forceFull });
   $("tr-sync-phone").value = "";
   $("tr-sync-pin").value = "";
 
@@ -2338,6 +2428,7 @@ $("tr-sync-form-2").addEventListener("submit", async (e) => {
   const payload = JSON.stringify({
     session_id: _trSyncState.sessionId,
     code,
+    full: _trSyncState.forceFull,
   });
   $("tr-sync-code").value = "";
 
@@ -2367,6 +2458,9 @@ $("tr-sync-form-2").addEventListener("submit", async (e) => {
       `${modeTag} +${d.added} transaction(s), ${d.skipped} doublon(s) — total ${d.total}`,
       "ok",
     );
+    if (d.cash_amount) {
+      renderTrBalance(d.cash_amount, d.cash_currency, new Date().toISOString());
+    }
     await loadReleveFromServer();
     setTimeout(closeTrSyncModal, 2500);
   } catch (err) {

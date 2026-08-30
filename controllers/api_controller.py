@@ -224,13 +224,34 @@ def categories_full():
 @api_bp.route('/categorie', methods=['POST'])
 @require_pin
 def update_category():
-    """Met à jour la catégorie d'un marchand (règle globale + override utilisateur)."""
-    data = request.get_json(silent=True) or {}
-    merchant = (data.get('merchant') or '').strip()
-    category = (data.get('category') or '').strip()
+    """
+    Met à jour la catégorie d'un ou plusieurs marchands (règle globale +
+    override utilisateur), en un seul cycle déchiffrement/écriture.
 
-    if not merchant or not category:
-        return jsonify({"error": "Marchand et catégorie requis"}), 400
+    Accepte deux formats de body JSON :
+      - un seul marchand :   {"merchant": "...", "category": "..."}
+      - un lot (batch) :     {"updates": [{"merchant": "...", "category": "..."}, ...]}
+    """
+    data = request.get_json(silent=True) or {}
+
+    raw_updates = data.get('updates')
+    if not isinstance(raw_updates, list) or not raw_updates:
+        # Rétro-compat : ancien format a un seul marchand
+        merchant = (data.get('merchant') or '').strip()
+        category = (data.get('category') or '').strip()
+        raw_updates = [{"merchant": merchant, "category": category}] if merchant and category else []
+
+    updates: list[tuple[str, str]] = []
+    for item in raw_updates:
+        if not isinstance(item, dict):
+            continue
+        m = (item.get('merchant') or '').strip()
+        c = (item.get('category') or '').strip()
+        if m and c:
+            updates.append((m, c))
+
+    if not updates:
+        return jsonify({"error": "Aucune mise à jour valide (marchand + catégorie requis)"}), 400
 
     user_id = auth.get_session_user()
     pin = auth.get_session_pin()
@@ -246,16 +267,18 @@ def update_category():
 
         tmp_csv.write_text(auth.read_releve_csv_text(csv_path, pin), encoding="utf-8")
 
-        # Règle globale partagée (profite à tous les utilisateurs sans override perso)
-        add_known_merchant_category(merchant, category)
-
-        # Override local utilisateur (protège ses préférences futures)
         user_known = auth.load_user_known_merchants(user_id)
-        mk = auth.merchant_key(merchant)
-        if mk:
-            user_known[mk] = category
-            auth.save_user_known_merchants(user_id, user_known)
+        for merchant, category in updates:
+            # Règle globale partagée (profite à tous les utilisateurs sans override perso)
+            add_known_merchant_category(merchant, category)
+            # Override local utilisateur (protège ses préférences futures)
+            mk = auth.merchant_key(merchant)
+            if mk:
+                user_known[mk] = category
+        auth.save_user_known_merchants(user_id, user_known)
 
+        # Un seul passage de recategorisation + un seul chiffrement, quel que
+        # soit le nombre de marchands modifiés.
         n = reappliquer_categories_csv(tmp_csv, user_known_merchants=user_known)
         auth.write_releve_csv_text(csv_path, tmp_csv.read_text(encoding="utf-8"), pin)
     except Exception as e:
@@ -263,10 +286,17 @@ def update_category():
     finally:
         tmp_csv.unlink(missing_ok=True)
 
+    if len(updates) == 1:
+        merchant, category = updates[0]
+        message = f"Marchand '{merchant}' → '{category}'. {n} ligne(s) mises à jour."
+    else:
+        message = f"{len(updates)} marchand(s) recatégorisés. {n} ligne(s) mises à jour au total."
+
     return jsonify({
         "ok": True,
-        "message": f"Marchand '{merchant}' → '{category}'. {n} ligne(s) mises à jour.",
+        "message": message,
         "transactions": n,
+        "updated_merchants": len(updates),
     })
 
 
@@ -401,6 +431,7 @@ def tr_sync_init():
         return jsonify({"error": "Content-Type doit être application/json"}), 415
 
     payload = request.get_json(silent=True) or {}
+    force_full = bool(payload.get("full"))
     try:
         tr_creds = TRCredentials.from_request(payload)
     except ValueError as e:
@@ -423,7 +454,7 @@ def tr_sync_init():
 
     session_id = TRSessionStore().create(api=init_result.api, user_id=user_id)
 
-    last_event_iso = auth.load_last_tr_sync(user_id)
+    last_event_iso = None if force_full else auth.load_last_tr_sync(user_id)
     sync_mode = "incrementale" if last_event_iso else "complete"
 
     return jsonify({
@@ -453,6 +484,7 @@ def tr_sync_verify():
     payload = request.get_json(silent=True) or {}
     session_id = (payload.get("session_id") or "").strip()
     code = (payload.get("code") or "").strip()
+    force_full = bool(payload.get("full"))
     payload = None
 
     if not session_id:
@@ -476,7 +508,11 @@ def tr_sync_verify():
     try:
         releve = auth.releve_path(user_id)
         user_known = auth.load_user_known_merchants(user_id)
-        last_event_iso = auth.load_last_tr_sync(user_id)
+        # force_full : ignore le curseur incrementale, re-fetch tout l'historique
+        # (utile pour recuperer des transactions manquees par un bug de dedup
+        # anterieur, puisqu'une sync incrementale ne redemande jamais les
+        # evenements plus anciens que le dernier curseur enregistre).
+        last_event_iso = None if force_full else auth.load_last_tr_sync(user_id)
 
         if releve.exists():
             tmp_csv.write_text(auth.read_releve_csv_text(releve, pin), encoding="utf-8")
@@ -503,6 +539,8 @@ def tr_sync_verify():
 
         if result.latest_event_iso:
             auth.save_last_tr_sync(user_id, result.latest_event_iso)
+        if result.cash_amount and result.cash_currency:
+            auth.save_tr_balance(user_id, result.cash_amount, result.cash_currency)
     finally:
         tmp_csv.unlink(missing_ok=True)
         store.delete(session_id)
@@ -515,9 +553,33 @@ def tr_sync_verify():
         "skipped": result.skipped,
         "total": result.total,
         "portfolio_lines": result.portfolio_lines,
+        "cash_amount": result.cash_amount,
+        "cash_currency": result.cash_currency,
         "sync_mode": mode,
         "message": (
             f"Sync {mode} : +{result.added} transaction(s) ajoutée(s), "
             f"{result.skipped} doublon(s) ignoré(s) — {result.total} ligne(s) au total."
         ),
+    })
+
+
+@api_bp.route('/tr/balance')
+@require_pin
+def tr_balance():
+    """
+    Dernier solde reel Trade Republic connu (recupere lors de la derniere
+    sync reussie). Ne fait AUCUN appel reseau vers TR : juste une lecture
+    du fichier persiste localement. Utilise pour affichage au chargement
+    de la page, sans attendre une nouvelle sync.
+    """
+    user_id = auth.get_session_user()
+    balance = auth.load_tr_balance(user_id)
+    if not balance:
+        return jsonify({"ok": True, "known": False})
+    return jsonify({
+        "ok": True,
+        "known": True,
+        "amount": balance["amount"],
+        "currency": balance["currency"],
+        "updated_at": balance.get("updated_at"),
     })
