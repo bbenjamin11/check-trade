@@ -318,12 +318,27 @@ def load_releve():
     os.close(fd_csv)
     tmp_csv = Path(path_csv)
     try:
-        from parser import reappliquer_categories_csv
+        from parser import (
+            detect_and_flag_cancellations,
+            ecrire_csv,
+            lire_releve_csv,
+            reappliquer_categories_csv,
+        )
 
         csv_text = auth.read_releve_csv_text(releve_csv, pin)
         tmp_csv.write_text(csv_text, encoding="utf-8")
         user_known = auth.load_user_known_merchants(user_id)
         reappliquer_categories_csv(tmp_csv, user_known_merchants=user_known)
+
+        # Detection auto des paires debit/credit annulees (carte annulee,
+        # remboursement...). Ne touche jamais une ligne deja marquee
+        # (STATUS non vide) — un choix utilisateur reste sticky.
+        rows = lire_releve_csv(tmp_csv)
+        rows, nb_paired = detect_and_flag_cancellations(rows)
+        if nb_paired:
+            ecrire_csv(rows, tmp_csv)
+            logger.info("%d paire(s) de transaction annulee(s) detectee(s) pour %s", nb_paired, user_id)
+
         csv_text = tmp_csv.read_text(encoding="utf-8")
         auth.write_releve_csv_text(releve_csv, csv_text, pin)
     except Exception:
@@ -332,6 +347,149 @@ def load_releve():
         tmp_csv.unlink(missing_ok=True)
 
     return Response(csv_text, mimetype="text/csv; charset=utf-8")
+
+
+@api_bp.route('/transaction/status', methods=['POST'])
+@require_pin
+def transaction_status():
+    """
+    Change le STATUS d'une transaction : "" (normale), "active" (confirmee
+    comme vraie depense, ignoree par la detection auto), "annulee" (exclue
+    des totaux) ou "interne" (virement interne, exclue des totaux).
+    """
+    from parser import (
+        ecrire_csv,
+        find_row_index,
+        lire_releve_csv,
+        set_row_status,
+        STATUS_ACTIVE,
+        STATUS_CANCELLED,
+        STATUS_INTERNAL,
+    )
+
+    body = request.get_json(silent=True) or {}
+    status = (body.get('status') or '').strip()
+    if status not in ('', STATUS_ACTIVE, STATUS_CANCELLED, STATUS_INTERNAL):
+        return jsonify({"error": f"Statut invalide : {status!r}"}), 400
+
+    user_id = auth.get_session_user()
+    pin = auth.get_session_pin()
+    csv_path = auth.releve_path(user_id)
+    if not csv_path.is_file():
+        return jsonify({"error": "Releve.csv introuvable — importez d'abord un relevé PDF."}), 404
+
+    fd_csv, path_csv = tempfile.mkstemp(suffix=".csv")
+    os.close(fd_csv)
+    tmp_csv = Path(path_csv)
+    try:
+        tmp_csv.write_text(auth.read_releve_csv_text(csv_path, pin), encoding="utf-8")
+        rows = lire_releve_csv(tmp_csv)
+        idx = find_row_index(
+            rows,
+            tr_id=body.get('tr_id') or '',
+            date_str=body.get('date') or '',
+            type_=body.get('type') or '',
+            money_in=body.get('money_in') or '',
+            money_out=body.get('money_out') or '',
+            description=body.get('description') or '',
+        )
+        if idx is None:
+            return jsonify({"error": "Transaction introuvable."}), 404
+        rows = set_row_status(rows, idx, status)
+        ecrire_csv(rows, tmp_csv)
+        csv_text = tmp_csv.read_text(encoding="utf-8")
+        auth.write_releve_csv_text(csv_path, csv_text, pin)
+    except IndexError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        tmp_csv.unlink(missing_ok=True)
+    return jsonify({"ok": True, "status": status})
+
+
+@api_bp.route('/transaction/manual', methods=['POST'])
+@require_pin
+def transaction_manual():
+    """
+    Ajoute une transaction saisie a la main (ex: virement interne entre
+    comptes). Par defaut STATUS="interne" (exclue des totaux) — le
+    formulaire peut forcer STATUS="" si c'est une vraie depense/entree.
+    """
+    from parser import (
+        add_known_merchant_category,
+        build_manual_transaction_row,
+        ecrire_csv,
+        lire_releve_csv,
+        reappliquer_categories_csv,
+        STATUS_ACTIVE,
+        STATUS_CANCELLED,
+        STATUS_INTERNAL,
+    )
+    from datetime import date as _d
+
+    body = request.get_json(silent=True) or {}
+    date_iso = (body.get('date') or '').strip()
+    direction = (body.get('direction') or '').strip()
+    description = (body.get('description') or '').strip()
+    category = (body.get('category') or '').strip()
+    status = (body.get('status') or STATUS_INTERNAL).strip()
+    try:
+        amount = float(body.get('amount'))
+    except (TypeError, ValueError):
+        amount = 0.0
+
+    if direction not in ('in', 'out'):
+        return jsonify({"error": "Champ « direction » doit valoir 'in' ou 'out'."}), 400
+    if amount <= 0:
+        return jsonify({"error": "Montant invalide."}), 400
+    if not description:
+        return jsonify({"error": "Description requise."}), 400
+    if not category:
+        return jsonify({"error": "Catégorie requise."}), 400
+    if status not in ('', STATUS_ACTIVE, STATUS_CANCELLED, STATUS_INTERNAL):
+        return jsonify({"error": f"Statut invalide : {status!r}"}), 400
+    try:
+        y, m, d = (int(x) for x in date_iso.split('-'))
+        _d(y, m, d)
+    except (ValueError, AttributeError):
+        return jsonify({"error": "Date invalide (attendu YYYY-MM-DD)."}), 400
+
+    user_id = auth.get_session_user()
+    pin = auth.get_session_pin()
+    csv_path = auth.releve_path(user_id)
+    if not csv_path.is_file():
+        return jsonify({"error": "Releve.csv introuvable — importez d'abord un relevé PDF."}), 404
+
+    fd_csv, path_csv = tempfile.mkstemp(suffix=".csv")
+    os.close(fd_csv)
+    tmp_csv = Path(path_csv)
+    try:
+        tmp_csv.write_text(auth.read_releve_csv_text(csv_path, pin), encoding="utf-8")
+        row = build_manual_transaction_row(date_iso, direction, amount, description, category, status)
+        merchant = row[6]
+
+        try:
+            add_known_merchant_category(merchant, category)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        user_known = auth.load_user_known_merchants(user_id)
+        mk = auth.merchant_key(merchant)
+        if mk:
+            user_known[mk] = category
+            auth.save_user_known_merchants(user_id, user_known)
+
+        rows = [row] + lire_releve_csv(tmp_csv)
+        ecrire_csv(rows, tmp_csv)
+        reappliquer_categories_csv(tmp_csv, user_known_merchants=user_known)
+
+        csv_text = tmp_csv.read_text(encoding="utf-8")
+        auth.write_releve_csv_text(csv_path, csv_text, pin)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        tmp_csv.unlink(missing_ok=True)
+    return jsonify({"ok": True, "transaction": row})
 
 
 @api_bp.route('/releve/pdf', methods=['POST'])

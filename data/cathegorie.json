@@ -152,7 +152,8 @@
     "PPG*BEBE9 BALARUC L": "💐 Fleurs / Cadeaux",
     "AUBERGE DE TERME": "🍕 Resto / Bar / Café",
     "GOOGLE*GOOGLE PLAY APP": "🎮 Jeux vidéo",
-    "INTERMARCHÉ": "🛒 Alimentation / Courses"
+    "INTERMARCHÉ": "🛒 Alimentation / Courses",
+    "VIREMENT VERS BENJAMIN (COMPTE COURANT)": "🔄 Virement interne / Non-dépense"
   },
   "categories": {
     "✈️ Vacances / Hébergement": {
@@ -608,10 +609,15 @@
     "❓ Divers": {
       "keywords": [],
       "merchants": []
+    },
+    "🔄 Virement interne / Non-dépense": {
+      "keywords": [],
+      "merchants": []
     }
   },
   "priority_order": [
     "known_merchants",
+    "🔄 Virement interne / Non-dépense",
     "🏦 Banque / Finance / Investissement",
     "👶 Enfants / Jouets",
     "🛒 Alimentation / Courses",

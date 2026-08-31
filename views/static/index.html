@@ -653,6 +653,47 @@
       line-height: 1.4;
       margin-bottom: 0.9rem;
     }
+    .manual-tx-card { width: min(460px, 92vw); }
+    .manual-tx-form { display: flex; flex-direction: column; gap: 0.55rem; }
+    .manual-tx-form label {
+      font-size: 0.78rem; color: var(--muted); margin-bottom: 0.15rem; display: block;
+    }
+    .manual-tx-row { display: flex; gap: 0.6rem; }
+    .manual-tx-row > div { flex: 1; }
+    .manual-tx-form input[type="text"],
+    .manual-tx-form input[type="date"],
+    .manual-tx-form input[type="number"],
+    .manual-tx-form select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.5rem 0.6rem;
+      font-size: 0.86rem;
+    }
+    .manual-tx-checkbox { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem; }
+    .manual-tx-checkbox label { margin: 0; font-size: 0.82rem; color: var(--text); }
+    .manual-tx-hint { font-size: 0.74rem; color: var(--muted); margin-top: -0.3rem; }
+    .manual-tx-submit {
+      margin-top: 0.4rem; background: var(--accent); color: #0b0b12; border: none;
+      border-radius: 8px; padding: 0.55rem; font-weight: 600; cursor: pointer;
+    }
+    .manual-tx-error { color: #f87171; font-size: 0.8rem; min-height: 1.1em; }
+
+    .status-select {
+      background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; font-size: 0.72rem; padding: 0.15rem 0.3rem; cursor: pointer;
+    }
+    tr.tx-row-excluded { opacity: 0.5; }
+    tr.tx-row-excluded td:not(:last-child) { text-decoration: line-through; }
+    .status-note {
+      font-size: 0.78rem; color: var(--muted); text-align: center; margin: -0.4rem 0 0.6rem;
+    }
+    .kpis-toggle {
+      display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+      font-size: 0.8rem; color: var(--muted); margin: 0.3rem 0 0.6rem;
+    }
     #btn-pick-pdf {
       width: 100%;
       background: linear-gradient(135deg, var(--accent2), var(--accent));
@@ -772,6 +813,53 @@
   </div>
 </div>
 
+<div id="manual-tx-modal" class="upload-modal" aria-hidden="true">
+  <div class="upload-modal-card manual-tx-card" role="dialog" aria-labelledby="manual-tx-title">
+    <div class="upload-modal-header">
+      <h3 id="manual-tx-title">➕ Transaction manuelle</h3>
+      <button type="button" id="manual-tx-close" class="upload-modal-close">✕</button>
+    </div>
+    <p class="upload-modal-text">
+      Pour les mouvements qui n'ont pas leur place dans le relevé : virement interne
+      entre tes comptes, dépense oubliée, correction... Par défaut elle est marquée
+      « non-dépense » et n'est pas comptée dans les totaux.
+    </p>
+    <form id="manual-tx-form" class="manual-tx-form" autocomplete="off" novalidate>
+      <div class="manual-tx-row">
+        <div>
+          <label for="manual-tx-date">Date</label>
+          <input type="date" id="manual-tx-date" required />
+        </div>
+        <div>
+          <label for="manual-tx-direction">Sens</label>
+          <select id="manual-tx-direction">
+            <option value="out">Sortie (dépense)</option>
+            <option value="in">Entrée</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label for="manual-tx-amount">Montant (€)</label>
+        <input type="number" id="manual-tx-amount" min="0.01" step="0.01" required />
+      </div>
+      <div>
+        <label for="manual-tx-desc">Description</label>
+        <input type="text" id="manual-tx-desc" placeholder="ex : Virement vers compte courant" required />
+      </div>
+      <div>
+        <label for="manual-tx-category">Catégorie</label>
+        <select id="manual-tx-category"></select>
+      </div>
+      <div class="manual-tx-checkbox">
+        <input type="checkbox" id="manual-tx-real" />
+        <label for="manual-tx-real">C'est une vraie dépense/entrée (la compter dans les totaux)</label>
+      </div>
+      <p class="manual-tx-error" id="manual-tx-error"></p>
+      <button type="submit" class="manual-tx-submit">Ajouter</button>
+    </form>
+  </div>
+</div>
+
 <!-- ── Modal Refresh Trade Republic (2 étapes) ── -->
 <!-- Aucun cred n'est stocké. Instance pytr en RAM serveur (TTL 5min) entre les 2 étapes. -->
 <div id="tr-sync-modal" aria-hidden="true">
@@ -848,6 +936,7 @@
     <input type="file" id="pdf-releve-input" accept=".pdf,application/pdf" hidden/>
     <div class="header-top-actions">
       <button type="button" id="btn-upload-pdf" title="Ajouter un relevé PDF">+</button>
+      <button type="button" id="btn-add-manual" title="Ajouter une transaction manuelle (virement interne, dépense hors relevé...)">➕ Manuel</button>
       <button type="button" id="btn-tr-sync" title="Synchroniser depuis Trade Republic (rien n'est stocké)">↻ Refresh TR</button>
       <button type="button" id="btn-logout" title="Fermer la session">🚪 Logout</button>
     </div>
@@ -869,7 +958,7 @@
         <thead>
           <tr>
             <th>Date</th><th>Type</th><th>Marchand / Description</th>
-            <th>Entrée</th><th>Sortie</th><th>Solde</th>
+            <th>Entrée</th><th>Sortie</th><th>Solde</th><th>Statut</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -894,6 +983,11 @@
     <div class="kpi"><div class="val" id="kpi-count">—</div><div class="lbl">Transactions</div></div>
     <div class="kpi"><div class="val" id="kpi-months">—</div><div class="lbl">Mois couverts</div></div>
   </div>
+  <div class="kpis-toggle">
+    <input type="checkbox" id="chk-include-excluded" />
+    <label for="chk-include-excluded">Inclure les transactions annulées / internes dans les totaux</label>
+  </div>
+  <p class="status-note" id="excluded-note"></p>
 
   <!-- Graphiques -->
   <div id="charts-wrap" style="display:none">
@@ -1009,6 +1103,22 @@
 ═══════════════════════════════════════════ */
 const $ = id => document.getElementById(id);
 
+/* Statuts de transaction (miroir de parser.py) */
+const STATUS_ACTIVE    = "active";
+const STATUS_CANCELLED = "annulee";
+const STATUS_INTERNAL  = "interne";
+let _includeExcluded = false;
+function isExcludedRow(r) {
+  if (_includeExcluded) return false;
+  return r.STATUS === STATUS_CANCELLED || r.STATUS === STATUS_INTERNAL;
+}
+const STATUS_LABELS = {
+  "":              "Normale",
+  [STATUS_ACTIVE]:    "✅ Confirmée",
+  [STATUS_CANCELLED]: "🔁 Annulée",
+  [STATUS_INTERNAL]:  "🔄 Interne",
+};
+
 /** Toutes les requêtes API envoient les cookies de session (PIN). */
 function apiFetch(url, opts = {}) {
   return fetch(url, { credentials: "same-origin", ...opts });
@@ -1110,11 +1220,15 @@ async function ensureCategories() {
 /* ═══════════════════════════════════════════
    DRAWER TRANSACTIONS MOIS
 ═══════════════════════════════════════════ */
+let _drawerState = null;
+
 function openDrawer(monthLabel, rows) {
+  _drawerState = { monthLabel, rows };
   $("drawer-title").textContent = `📅 Transactions — ${monthLabel}`;
 
-  const ins    = rows.filter(r => parseEur(r["MONEY IN"])  > 0);
-  const outs   = rows.filter(r => parseEur(r["MONEY OUT"]) > 0);
+  const countedRows = rows.filter(r => !isExcludedRow(r));
+  const ins    = countedRows.filter(r => parseEur(r["MONEY IN"])  > 0);
+  const outs   = countedRows.filter(r => parseEur(r["MONEY OUT"]) > 0);
   const totalIn  = ins.reduce((s,r)  => s + parseEur(r["MONEY IN"]),  0);
   const totalOut = outs.reduce((s,r) => s + parseEur(r["MONEY OUT"]), 0);
 
@@ -1135,13 +1249,27 @@ function openDrawer(monthLabel, rows) {
     const out = parseEur(r["MONEY OUT"]);
     const inp = parseEur(r["MONEY IN"]);
     const tr  = document.createElement("tr");
+    if (isExcludedRow(r)) tr.classList.add("tx-row-excluded");
     tr.innerHTML = `
       <td>${r.DATE||""}</td>
       <td>${r.TYPE||""}</td>
       <td class="desc-cell" title="${(r.MERCHANT||r.DESCRIPTION||"").replace(/"/g,"")}">${r.MERCHANT||r.DESCRIPTION||""}</td>
       <td class="amt-in">${inp>0 ? fmtEur(inp) : ""}</td>
       <td class="amt-out">${out>0 ? fmtEur(out) : ""}</td>
-      <td>${fmtEur(parseEur(r.BALANCE))}</td>`;
+      <td>${fmtEur(parseEur(r.BALANCE))}</td>
+      <td></td>`;
+    const statusCell = tr.lastElementChild;
+    const sel = document.createElement("select");
+    sel.className = "status-select";
+    Object.entries(STATUS_LABELS).forEach(([val, label]) => {
+      const opt = document.createElement("option");
+      opt.value = val;
+      opt.textContent = label;
+      if ((r.STATUS||"") === val) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", () => updateTransactionStatus(r, sel.value));
+    statusCell.appendChild(sel);
     tbody.appendChild(tr);
   });
 
@@ -1568,6 +1696,7 @@ async function render(rows) {
   const merchantOutByMonth = {};
   const dayCumulByMonth = {};
   let totalIn=0, totalOut=0;
+  let excludedCount=0, excludedIn=0, excludedOut=0;
 
   /* Index rows par mois */
   const rowsByMonth = {};
@@ -1577,12 +1706,19 @@ async function render(rows) {
     const out = parseEur(r["MONEY OUT"]);
     const iso  = toISO(r.DATE||"");
     const mKey = monthKey(r.DATE||"");
+    const excluded = isExcludedRow(r);
 
     if (!rowsByMonth[mKey]) rowsByMonth[mKey] = [];
     rowsByMonth[mKey].push(r);
     if (!dayCumulByMonth[mKey]) dayCumulByMonth[mKey] = Array.from({length:31}, () => ({in:0, out:0}));
 
-    if (inp > 0) {
+    if (excluded) {
+      excludedCount += 1;
+      excludedIn  += inp;
+      excludedOut += out;
+    }
+
+    if (inp > 0 && !excluded) {
       totalIn += inp;
       dailyIn[iso]    = (dailyIn[iso]||0) + inp;
       monthlyIn[mKey] = (monthlyIn[mKey]||0) + inp;
@@ -1591,7 +1727,7 @@ async function render(rows) {
         dayCumulByMonth[mKey][dayNum - 1].in += inp;
       }
     }
-    if (out > 0) {
+    if (out > 0 && !excluded) {
       totalOut += out;
       dailyOut[iso]    = (dailyOut[iso]||0) + out;
       monthlyOut[mKey] = (monthlyOut[mKey]||0) + out;
@@ -1618,6 +1754,13 @@ async function render(rows) {
       }
     }
   });
+
+  const noteEl = $("excluded-note");
+  if (noteEl) {
+    noteEl.textContent = excludedCount
+      ? `🔁 ${excludedCount} transaction(s) annulée(s)/interne(s) exclue(s) des totaux ci-dessus (${fmtEur(excludedOut)} sortie(s), ${fmtEur(excludedIn)} entrée(s))`
+      : "";
+  }
 
   const months = [...new Set([...Object.keys(monthlyOut),...Object.keys(monthlyIn)])].sort();
   
@@ -2516,6 +2659,117 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   $("btn-logout").addEventListener("click", logout);
   boot();
+});
+
+/* ═══════════════════════════════════════════
+   GESTION DES TRANSACTIONS ANNULEES / INTERNES
+═══════════════════════════════════════════ */
+
+$("chk-include-excluded").addEventListener("change", (e) => {
+  _includeExcluded = e.target.checked;
+  render(_allRows);
+  if (_drawerState) openDrawer(_drawerState.monthLabel, _drawerState.rows);
+});
+
+async function updateTransactionStatus(row, newStatus) {
+  try {
+    const resp = await apiFetch("/api/transaction/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tr_id: row.TR_ID || "",
+        date: row.DATE || "",
+        type: row.TYPE || "",
+        money_in: row["MONEY IN"] || "",
+        money_out: row["MONEY OUT"] || "",
+        description: row.DESCRIPTION || "",
+        status: newStatus,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert(`Impossible de changer le statut : ${err.error || resp.statusText}`);
+      return;
+    }
+    row.STATUS = newStatus;
+    await render(_allRows);
+    if (_drawerState) openDrawer(_drawerState.monthLabel, _drawerState.rows);
+  } catch (e) {
+    alert(`Erreur réseau : ${e.message}`);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   TRANSACTION MANUELLE
+═══════════════════════════════════════════ */
+
+async function openManualTxModal() {
+  const sel = $("manual-tx-category");
+  if (!sel.dataset.filled) {
+    const cats = await ensureCategories();
+    sel.innerHTML = "";
+    const preferred = "🔄 Virement interne / Non-dépense";
+    const ordered = [preferred, ...cats.filter(c => c !== preferred)];
+    ordered.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = c;
+      sel.appendChild(opt);
+    });
+    sel.dataset.filled = "1";
+  }
+  $("manual-tx-error").textContent = "";
+  $("manual-tx-date").value = new Date().toISOString().slice(0, 10);
+  $("manual-tx-modal").classList.add("is-open");
+  $("manual-tx-modal").setAttribute("aria-hidden", "false");
+}
+
+function closeManualTxModal() {
+  $("manual-tx-modal").classList.remove("is-open");
+  $("manual-tx-modal").setAttribute("aria-hidden", "true");
+}
+
+$("btn-add-manual").addEventListener("click", openManualTxModal);
+$("manual-tx-close").addEventListener("click", closeManualTxModal);
+$("manual-tx-modal").addEventListener("click", (e) => {
+  if (e.target.id === "manual-tx-modal") closeManualTxModal();
+});
+
+$("manual-tx-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = $("manual-tx-error");
+  errEl.textContent = "";
+
+  const date = $("manual-tx-date").value;
+  const direction = $("manual-tx-direction").value;
+  const amount = parseFloat($("manual-tx-amount").value);
+  const description = $("manual-tx-desc").value.trim();
+  const category = $("manual-tx-category").value;
+  const isReal = $("manual-tx-real").checked;
+  const status = isReal ? "" : STATUS_INTERNAL;
+
+  if (!date || !direction || !amount || amount <= 0 || !description || !category) {
+    errEl.textContent = "Merci de remplir tous les champs (montant > 0).";
+    return;
+  }
+
+  try {
+    const resp = await apiFetch("/api/transaction/manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, direction, amount, description, category, status }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      errEl.textContent = err.error || "Erreur serveur.";
+      return;
+    }
+    $("manual-tx-form").reset();
+    closeManualTxModal();
+    await loadReleveFromServer();
+  } catch (e2) {
+    errEl.textContent = `Erreur réseau : ${e2.message}`;
+  }
 });
 </script>
 </body>

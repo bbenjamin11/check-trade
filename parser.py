@@ -11,6 +11,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass
+from datetime import date as _date
 from pathlib import Path
 
 import pdfplumber
@@ -41,8 +42,21 @@ SKIP_Y_MIN_FOOTER = 750
 # ── Nouvelles colonnes ────────────────────────────────────────────────────────
 COLNAMES = [
     "DATE", "TYPE", "MONEY IN", "MONEY OUT",
-    "BALANCE", "DESCRIPTION", "MERCHANT", "CATEGORY", "TR_ID",
+    "BALANCE", "DESCRIPTION", "MERCHANT", "CATEGORY", "TR_ID", "STATUS",
 ]
+
+# ── Statuts de transaction ────────────────────────────────────────────────────
+# ""          : jamais evalue (comportement historique, compte comme une depense normale)
+# "active"    : evalue et confirme comme une VRAIE depense/entree (sticky, ignore par la
+#               detection auto meme si un match d'annulation apparait plus tard)
+# "annulee"   : paire debit/credit annulee (carte annulee, remboursement, etc.) — exclue
+#               des totaux/graphiques
+# "interne"   : virement interne / transaction non-depense saisie manuellement — exclue
+#               des totaux/graphiques
+STATUS_ACTIVE    = "active"
+STATUS_CANCELLED = "annulee"
+STATUS_INTERNAL  = "interne"
+STATUS_EXCLUDED  = frozenset({STATUS_CANCELLED, STATUS_INTERNAL})
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  NORMALISATION MARCHAND
@@ -719,6 +733,173 @@ def reappliquer_categories_csv(
     out_rows.sort(key=_date_sort_key)
     ecrire_csv(out_rows, path)
     return len(out_rows)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  GESTION DES TRANSACTIONS ANNULEES / INTERNES
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _row_ordinal(row: list[str]) -> int | None:
+    """Ordinal du jour (pour calcul d'ecart en jours) ou None si date illisible."""
+    y, mon, d = _date_sort_key(row)
+    if not y or not mon or not d:
+        return None
+    try:
+        return _date(y, mon, d).toordinal()
+    except ValueError:
+        return None
+
+
+def detect_and_flag_cancellations(
+    rows: list[list[str]],
+    max_gap_days: int = 7,
+) -> tuple[list[list[str]], int]:
+    """
+    Detecte automatiquement les paires debit/credit qui se neutralisent
+    (carte annulee, remboursement) et marque les deux lignes STATUS="annulee".
+
+    Regle d'appariement : meme MERCHANT (non vide), meme montant exact,
+    ecart de date <= max_gap_days, une ligne en MONEY OUT et une en MONEY IN.
+
+    Ne touche JAMAIS une ligne dont le STATUS n'est pas vide ("") — un statut
+    deja pose (par l'utilisateur ou une precedente detection) est sticky et
+    ne sera ni ecrase ni re-evalue.
+
+    Retourne (rows_modifiees, nb_paires_detectees).
+    """
+    rows = [_normalize_row_width(r) for r in rows]
+
+    debits, credits = [], []
+    for idx, r in enumerate(rows):
+        if r[9].strip():  # STATUS deja fixe -> on ne touche pas
+            continue
+        merchant = r[6].strip().lower()
+        if not merchant:
+            continue
+        ordinal = _row_ordinal(r)
+        if ordinal is None:
+            continue
+        out_amt = parseEur(r[3]) if r[3].strip() else 0.0
+        in_amt = parseEur(r[2]) if r[2].strip() else 0.0
+        if out_amt > 0:
+            debits.append((idx, merchant, out_amt, ordinal))
+        elif in_amt > 0:
+            credits.append((idx, merchant, in_amt, ordinal))
+
+    used_credits: set[int] = set()
+    paired = 0
+    for d_idx, d_merchant, d_amt, d_ord in debits:
+        best = None
+        for c_idx, c_merchant, c_amt, c_ord in credits:
+            if c_idx in used_credits:
+                continue
+            # Correspondance floue plutot que stricte : le marchand normalise
+            # d'un remboursement porte souvent un prefixe/suffixe en plus
+            # ("Card refund Omlet Bruxelles" vs "Omlet Bruxelles") quand la
+            # description brute n'est reconnue par aucune regle _MERCHANT_RULES
+            # et retombe sur le nettoyage generique. Egalite stricte ratait
+            # ces paires. Garde-fou de longueur (>=4) pour eviter les faux
+            # positifs sur de trop courtes sous-chaines.
+            shorter, longer = sorted((c_merchant, d_merchant), key=len)
+            merchant_match = (
+                c_merchant == d_merchant
+                or (len(shorter) >= 4 and shorter in longer)
+            )
+            if not merchant_match:
+                continue
+            if abs(c_amt - d_amt) > 0.001:
+                continue
+            gap = abs(c_ord - d_ord)
+            if gap > max_gap_days:
+                continue
+            if best is None or gap < best[1]:
+                best = (c_idx, gap)
+        if best is not None:
+            c_idx = best[0]
+            used_credits.add(c_idx)
+            rows[d_idx][9] = STATUS_CANCELLED
+            rows[c_idx][9] = STATUS_CANCELLED
+            paired += 1
+
+    return rows, paired
+
+
+def parseEur(value: str) -> float:
+    """Parse un montant '€12,34' -> 12.34 (miroir de parseEur() cote JS)."""
+    if not value or not value.strip():
+        return 0.0
+    clean = value.replace("€", "").replace(" ", "").replace(",", ".")
+    try:
+        return float(clean)
+    except ValueError:
+        return 0.0
+
+
+def find_row_index(
+    rows: list[list[str]],
+    *,
+    tr_id: str = "",
+    date_str: str = "",
+    type_: str = "",
+    money_in: str = "",
+    money_out: str = "",
+    description: str = "",
+) -> int | None:
+    """
+    Retrouve l'index d'une ligne dans `rows` a partir de son identite.
+    Priorite au TR_ID (stable, unique) ; sinon on retombe sur la meme cle de
+    contenu que le dedup (_content_key) : date/type/montants/description.
+    """
+    rows = [_normalize_row_width(r) for r in rows]
+    tr_id = (tr_id or "").strip()
+    if tr_id:
+        for i, r in enumerate(rows):
+            if r[8].strip() == tr_id:
+                return i
+        return None
+
+    target = _content_key([date_str, type_, money_in, money_out, "", description])
+    for i, r in enumerate(rows):
+        if _content_key(r) == target:
+            return i
+    return None
+
+
+def set_row_status(rows: list[list[str]], index: int, status: str) -> list[list[str]]:
+    """Force le STATUS d'une ligne (override utilisateur, toujours sticky)."""
+    rows = [_normalize_row_width(r) for r in rows]
+    if not (0 <= index < len(rows)):
+        raise IndexError("Ligne introuvable")
+    rows[index][9] = status
+    return rows
+
+
+_MONTHS_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def build_manual_transaction_row(
+    date_iso: str,
+    direction: str,
+    amount: float,
+    description: str,
+    category: str,
+    status: str = STATUS_INTERNAL,
+) -> list[str]:
+    """
+    Construit une ligne de transaction saisie manuellement (ex: virement
+    interne entre comptes). `date_iso` = "YYYY-MM-DD", `direction` = "in"|"out".
+    """
+    y, m, d = (int(x) for x in date_iso.split("-"))
+    date_str = f"{d} {_MONTHS_ABBR[m - 1]} {y}"
+    amt_str = f"€{abs(amount):.2f}".replace(".", ",")
+    money_in = amt_str if direction == "in" else ""
+    money_out = amt_str if direction == "out" else ""
+    merchant = normalize_merchant(description)
+    return [
+        date_str, "Manual", money_in, money_out,
+        "", description.strip(), merchant, category, "", status,
+    ]
 
 
 def main() -> None:
